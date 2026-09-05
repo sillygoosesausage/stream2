@@ -1,0 +1,7 @@
+# The floor: predict the global training mean.
+exp_id: exp000_mean
+description: Global mean baseline
+model: mean
+tiers: [raw]
+folds: [A, B]
+notes: Sanity floor.

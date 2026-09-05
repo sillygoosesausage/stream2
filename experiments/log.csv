@@ -1,0 +1,3 @@
+exp_id,date,git_commit,description,feature_tiers,model,key_hyperparams,fold_A_rmse,fold_B_rmse,mean_rmse,leaderboard_rmse,runtime_min,submitted,notes
+exp000_mean,2026-09-06T01:02:25,uncommitted,Global mean baseline,raw,mean,{},87.6081,102.0362,94.8221,,0.01,no,Sanity floor.
+exp001_baseline_raw,2026-09-06T01:02:41,uncommitted,"LightGBM on raw measurements + hour/month, no engineered features",raw,lightgbm,"{""learning_rate"": 0.05, ""num_leaves"": 127}",28.6257,32.9601,30.7929,,0.12,no,"Honest baseline - contains no PM2.5 history, so it is computable on test."

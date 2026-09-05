@@ -1,0 +1,12 @@
+# Phase 4 baseline: LightGBM on raw columns only, no feature engineering.
+# This is the number every later experiment must beat. Expected fold B ~33.1.
+exp_id: exp001_baseline_raw
+description: LightGBM on raw measurements + hour/month, no engineered features
+model: lightgbm
+tiers: [raw]
+params:
+  learning_rate: 0.05
+  num_leaves: 127
+folds: [A, B]
+notes: Honest baseline - contains no PM2.5 history, so it is computable on test.
+final_num_boost_round: 200   # fold B best_iter 151, scaled for the larger full-data fit

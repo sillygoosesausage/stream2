@@ -1,0 +1,70 @@
+Expected Submission Materials
+Deadline: End of Sunday, 6 September 2026
+Each candidate team under consideration for finalist selection should submit the following materials.
+Required Materials
+1. Final Notebook / Methodology Report
+o Complete description of the approach used.
+o Data cleaning and preprocessing.
+o Feature engineering.
+o Validation strategy.
+o Models tested and final model selection.
+o Any ensembling or post-processing.
+o Key results, observations, and limitations.
+2. Complete Source Code
+o All code required to reproduce the final solution.
+o Must include:
+▪ data loading;
+▪ preprocessing;
+▪ feature generation;
+▪ model training;
+▪ validation;
+▪ test inference;
+▪ post-processing;
+▪ generation of the final submission file.
+o If multiple scripts/files were used, submit all relevant files.
+3. Final Submission / Prediction File
+o The exact file corresponding to the team's leaderboard submission being considered
+for finalist selection.
+o This should not be a recreated or modified version unless clearly stated.
+4. Processed / Cleaned Dataset(s), if applicable
+o Any intermediate or processed datasets used to produce the final result.
+o If these can be fully regenerated from the provided code, teams may instead clearly
+indicate the relevant generation step.
+5. README / Reproduction Instructions
+o Short instructions explaining how to reproduce the final submission.
+o Include:
+▪ required files;
+▪ execution order;
+▪ key dependencies/packages;
+▪ important random seeds or settings;
+▪ which script/notebook generates the final prediction file.
+6. Final Model Information
+o Identify the model or ensemble used for the final leaderboard submission.
+o Include relevant hyperparameters and ensemble weights where applicable.
+o If a pretrained model, AutoML system, or external package was used, clearly identify
+it.
+Required Disclosure
+Teams should also provide a short disclosure covering:
+• any external datasets used;
+• any external code, notebooks, repositories, or public solutions consulted or adapted;
+• any pretrained models used;
+• any AI tools or coding agents used;
+• any manual modification or post-processing of predictions;
+• any additional information used beyond the competition-provided files.
+Strongly Recommended
+Where available, teams should also provide:
+• local validation scores;
+• leaderboard score associated with the submitted prediction file;
+• experiment/model comparison results;
+• saved model files where retraining is computationally expensive;
+• package/environment file such as requirements.txt or environment.yml.
+Important
+The materials submitted should represent the actual pipeline that produced the leaderboard result
+being reviewed.
+The finalist-selection review may verify whether:
+competition data → preprocessing → modelling → inference → post-processing → final
+submission
+can be reasonably reconstructed from the submitted materials.
+Missing documentation alone will not automatically disqualify a team. However, if the submitted
+materials cannot plausibly explain or reproduce the leaderboard result, the submission may be held for
+technical review or deemed ineligible for finalist selection.
