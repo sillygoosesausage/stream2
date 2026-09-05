@@ -1,0 +1,14 @@
+# best_v1 with all SO2 features removed (D16).
+# Fold B is a tie with v1 (17.691 vs 17.692, 4 seeds). Chosen on drift grounds:
+# SO2 fell 44% between train and test and tops adversarial validation, so it is
+# a feature whose test-year distribution the model has never seen, for no gain.
+exp_id: exp003_best_v2_no_so2
+description: best_v1 minus SO2 features - drift-hardened, 155 features
+model: lightgbm
+feature_set: best_v2_no_so2
+params:
+  learning_rate: 0.05
+  num_leaves: 127
+folds: [A, B]
+final_num_boost_round: 760
+notes: Paired with exp002 to measure directly whether dropping SO2 helps on the real test year.

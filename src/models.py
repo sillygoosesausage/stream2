@@ -23,14 +23,15 @@ class Model:
 
     def fit(self, X: pd.DataFrame, y: pd.Series,
             X_val: pd.DataFrame | None = None,
-            y_val: pd.Series | None = None) -> "Model":
-        self._fit(X, y, X_val, y_val)
+            y_val: pd.Series | None = None,
+            sample_weight: np.ndarray | None = None) -> "Model":
+        self._fit(X, y, X_val, y_val, sample_weight)
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         return self._predict(X)
 
-    def _fit(self, X, y, X_val, y_val):  # pragma: no cover - interface
+    def _fit(self, X, y, X_val, y_val, sample_weight):  # pragma: no cover
         raise NotImplementedError
 
     def _predict(self, X):  # pragma: no cover - interface
@@ -42,7 +43,7 @@ class MeanModel(Model):
 
     name = "mean"
 
-    def _fit(self, X, y, X_val, y_val):
+    def _fit(self, X, y, X_val, y_val, sample_weight=None):
         self.value_ = float(np.mean(y))
 
     def _predict(self, X):
@@ -75,13 +76,13 @@ class LightGBMModel(Model):
     NUM_BOOST_ROUND = 3000
     EARLY_STOPPING = 100
 
-    def _fit(self, X, y, X_val, y_val):
+    def _fit(self, X, y, X_val, y_val, sample_weight=None):
         import lightgbm as lgb
 
         params = {**self.DEFAULTS, **self.params}
         rounds = params.pop("num_boost_round", self.NUM_BOOST_ROUND)
 
-        dtrain = lgb.Dataset(X, y)
+        dtrain = lgb.Dataset(X, y, weight=sample_weight)
         callbacks = [lgb.log_evaluation(0)]
         valid_sets = []
         if X_val is not None:

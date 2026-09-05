@@ -1,0 +1,17 @@
+# Phase 5 winner. Fold B 17.692 (4 seeds, sd 0.114), 170 features.
+# Included: raw + C0 leads + D cross-station + B meteorology + C lags/diffs.
+# Excluded after measurement: A calendar (+4.52), C rolling (+0.89),
+#                             F ratios (+0.24), E null flags (+0.11).
+exp_id: exp002_best_v1
+description: raw+C0+D+B+C(lag,diff), D7 imputation, LightGBM
+model: lightgbm
+feature_set: best_v1
+params:
+  learning_rate: 0.05
+  num_leaves: 127
+folds: [A, B]
+notes: First scoreable submission of the lead-feature model. Baseline was 32.96.
+
+# fold B early-stopped at 544 iters on 257,927 rows; final fit uses all
+# 360,954 rows, so scaled up by ~1.4
+final_num_boost_round: 760

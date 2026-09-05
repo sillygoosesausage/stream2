@@ -44,14 +44,16 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
-    tiers = cfg.get("tiers", ["raw"])
+    fset, tiers = cfg.get("feature_set"), cfg.get("tiers", ["raw"])
+    build = ((lambda df: F.build_set(df, fset)) if fset
+             else (lambda df: F.build_features(df, tiers)))
 
     train, test, sample = D.load_all()
 
-    X_train = F.build_features(train, tiers)
+    X_train = build(train)
     feature_cols = list(X_train.columns)
     D.leakage_guard(X_train, feature_cols)
-    D.assert_test_computable(lambda df: F.build_features(df, tiers), feature_cols)
+    D.assert_test_computable(build, feature_cols)
 
     n_rounds = cfg.get("final_num_boost_round")
     params = dict(cfg.get("params", {}))
@@ -61,7 +63,7 @@ def main() -> None:
     model = M.build_model(cfg["model"], params)
     model.fit(X_train, train[C.TARGET])
 
-    X_test = F.build_features(test, tiers)[feature_cols]
+    X_test = build(test)[feature_cols]
     pred = np.clip(model.predict(X_test), C.TARGET_MIN, C.TARGET_MAX)
 
     # Reindex to the sample's id order -- test rows were sorted by station/time

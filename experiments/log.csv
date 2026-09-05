@@ -1,3 +1,5 @@
 exp_id,date,git_commit,description,feature_tiers,model,key_hyperparams,fold_A_rmse,fold_B_rmse,mean_rmse,leaderboard_rmse,runtime_min,submitted,notes
 exp000_mean,2026-09-06T01:02:25,uncommitted,Global mean baseline,raw,mean,{},87.6081,102.0362,94.8221,,0.01,no,Sanity floor.
 exp001_baseline_raw,2026-09-06T01:02:41,uncommitted,"LightGBM on raw measurements + hour/month, no engineered features",raw,lightgbm,"{""learning_rate"": 0.05, ""num_leaves"": 127}",28.6257,32.9601,30.7929,,0.12,no,"Honest baseline - contains no PM2.5 history, so it is computable on test."
+exp002_best_v1,2026-09-06T02:25:50,f5aec24,"raw+C0+D+B+C(lag,diff), D7 imputation, LightGBM",best_v1,lightgbm,"{""learning_rate"": 0.05, ""num_leaves"": 127}",22.6175,17.5353,20.0764,,0.97,no,First scoreable submission of the lead-feature model. Baseline was 32.96.
+exp003_best_v2_no_so2,2026-09-06T02:28:28,f5aec24,"best_v1 minus SO2 features - drift-hardened, 155 features",best_v2_no_so2,lightgbm,"{""learning_rate"": 0.05, ""num_leaves"": 127}",22.8127,17.7482,20.2804,,0.38,no,Paired with exp002 to measure directly whether dropping SO2 helps on the real test year.

@@ -66,25 +66,16 @@ def main() -> None:
         train,
         model_name=cfg["model"],
         model_params=cfg.get("params", {}),
-        tiers=cfg.get("tiers", ["raw"]),
+        features=cfg.get("feature_set") or cfg.get("tiers", ["raw"]),
         folds=cfg.get("folds"),
+        name=cfg["exp_id"],
     )
+    V.report(cv)
 
-    print("\n--- fold RMSE ---")
-    for fold, r in cv["results"].items():
-        print(f"  fold {fold}: {r.rmse:8.3f}  (n={r.n:,}, "
-              f"best_iter={r.best_iteration})")
-    print(f"  mean:   {cv['mean']:8.3f}   spread: {cv['spread']:.3f}")
-
-    primary = cv["results"].get(C.PRIMARY_FOLD)
-    if primary is not None:
-        print(f"\n--- fold {C.PRIMARY_FOLD} RMSE by target decile "
-              f"(0 = cleanest hours, 9 = worst) ---")
-        for d, v in primary.by_decile.items():
-            print(f"  decile {d}: {v:7.2f}")
-        print(f"\n--- fold {C.PRIMARY_FOLD} RMSE by month ---")
-        for m, v in primary.by_month.items():
-            print(f"  month {m:>2}: {v:7.2f}")
+    # Keep the out-of-fold predictions for Phase 9 ensembling.
+    oof_path = C.OOF_DIR / f"{cfg['exp_id']}.parquet"
+    cv.oof().rename("pred").to_frame().to_parquet(oof_path)
+    print(f"\noof predictions -> {oof_path.name}")
 
     runtime_min = (time.time() - started) / 60
     print(f"\nruntime: {runtime_min:.1f} min")
@@ -95,12 +86,12 @@ def main() -> None:
             "date": datetime.now().isoformat(timespec="seconds"),
             "git_commit": git_commit(),
             "description": cfg.get("description", ""),
-            "feature_tiers": "+".join(cfg.get("tiers", ["raw"])),
+            "feature_tiers": cfg.get("feature_set") or "+".join(cfg.get("tiers", ["raw"])),
             "model": cfg["model"],
             "key_hyperparams": json.dumps(cfg.get("params", {})),
-            "fold_A_rmse": round(cv["scores"].get("A", float("nan")), 4),
-            "fold_B_rmse": round(cv["scores"].get("B", float("nan")), 4),
-            "mean_rmse": round(cv["mean"], 4),
+            "fold_A_rmse": round(cv.scores.get("A", float("nan")), 4),
+            "fold_B_rmse": round(cv.scores.get("B", float("nan")), 4),
+            "mean_rmse": round(cv.mean, 4),
             "leaderboard_rmse": "",
             "runtime_min": round(runtime_min, 2),
             "submitted": "no",

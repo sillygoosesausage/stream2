@@ -79,6 +79,45 @@ Other data facts worth knowing:
 - CO is recorded in coarse steps (300, 500, 600...), so it is chunkier than it looks.
 - Hourly series are near-continuous; gaps of 2–5 hours exist but are rare.
 
+### Fact 4 — Lead features: the mirror image of Fact 1 (found in Phase 2)
+
+Fact 1 says PM2.5 *history* is unavailable at test time. The reverse is also true and is a large
+opportunity: **every other covariate is available for the hour you are predicting.**
+
+For a row at hour *t* you predict PM2.5 at *t+1*. The test set is contiguous, so the row at *t+1*
+is also in the test file — and it carries observed PM10, CO, NO2, SO2, O3 and weather **for hour
+*t+1***, concurrent with the target. Measured: **99.25%** of test rows have their *t+1* row present
+(the 383 that don't are the last hour of each station plus a few gaps).
+
+This reframes the task. It is not really "forecast one hour ahead" — it is **"estimate PM2.5 at
+hour *t+1* from everything except PM2.5 that was measured at hour *t+1*."** A nowcast, not a forecast.
+
+Correlation with the target, at *t* versus at *t+1*:
+
+| | at *t* | at *t+1* (lead) |
+|---|---|---|
+| PM10 | 0.848 | **0.866** |
+| CO | 0.762 | **0.778** |
+| SO2 | 0.499 | 0.504 |
+| NO2 | 0.643 | 0.642 |
+
+Measured effect on fold RMSE (LightGBM, otherwise identical):
+
+| Features | Fold A | Fold B |
+|---|---|---|
+| raw baseline | 28.97 | 32.86 |
+| + lead-1 covariates | 23.11 | 24.95 |
+| + city-wide aggregates and their leads | 23.27 | **23.71** |
+
+**A 9.15 RMSE improvement on fold B**, from features that were sitting in plain sight. This already
+beats the illegal `pm25_now` model (25.18) and closes most of the distance to illegal persistence
+(22.25) — which means Phase 7's recursive experiment now has far less headroom to chase, and its
+priority drops accordingly.
+
+Lead features are legal under the Fact 1 rule: they are built from the test CSV alone and touch no
+PM2.5 value. `leakage_guard` permits them by design; `assert_test_computable` confirms they are
+non-null on the real test frame.
+
 ---
 
 ## How to use this plan
@@ -88,8 +127,11 @@ before Phase 5 (features), or you will have no way to tell whether a feature hel
 
 Two markers appear throughout:
 
-- **DECISION Dn** — a call that is yours to make. I'll lay out options and give a recommendation,
-  but I won't pick for you. Record your choice in the Decision Register at the bottom.
+- **DECISION Dn** — a design choice. **Default: settle it by experiment.** Where the options are
+  few and each is cheap to build, enumerate them, run them through `validate.compare()`, log the
+  table, and keep the winner — do not ask. Escalate to the user only when an option is expensive to
+  build or when validation genuinely cannot separate the alternatives; in that case say why, and
+  give a recommendation. Record every outcome in the Decision Register at the bottom.
 - **Task** — heavy lifting. Hand these to me.
 
 Each phase ends with an **Exit check**: what must be true before you move on.
@@ -205,17 +247,30 @@ validation should imitate that exactly.
 
 **Proposed scheme — "seasonal analogue" folds:**
 
-| Fold | Train on | Validate on |
-|---|---|---|
-| A | 2013-03 → 2014-08 | 2014-09 → 2015-02 |
-| B | 2013-03 → 2015-08 | 2015-09 → 2016-02 |
+**Measured fold characteristics (Phase 3):**
 
-Fold B is the closest analogue to the real task: same months, same length, same "one year later"
-relationship, and the most training data. Treat B as primary, A as a stability check. If a change
-helps on B but hurts on A, be suspicious.
+| Fold | Train rows | Val window | Val rows | Val mean y | Baseline RMSE | Use |
+|---|---|---|---|---|---|---|
+| A | 155,190 | 2014-09 → 2015-02 | 50,799 | 86.8 | 28.63 | stability check |
+| **B** | 257,927 | 2015-09 → 2016-02 | 51,349 | 83.2 | **32.96** | **primary** |
+| C | 51,925 | 2013-09 → 2014-02 | 51,442 | 93.5 | 49.81 | **do not use** |
+| R | 309,276 | 2016-03 → 2016-08 | 51,678 | 64.2 | 23.11 | off-season check only |
 
-You could add a third, shorter fold ending Aug 2016 (validating Mar–Aug 2016) to use the most
-recent data, but the months are wrong, so weight it lightly.
+*(Test set, for comparison: 51,063 rows, Sep 2016 → Feb 2017.)*
+
+Fold B is the closest analogue to the real task — same months, same "one year later" relationship,
+most training data, and a validation window within 1% of the test set's size. Treat B as primary
+and A as a stability check; if a change helps on B but hurts on A, be suspicious.
+
+**Fold C is unusable and was retired.** With only 183 days of training data its baseline RMSE is
+49.81 against fold B's 32.96 — so starved that it ranks changes differently. It stays defined in
+`config.py` with that warning recorded, but is excluded from `DEFAULT_FOLDS`.
+
+**Fold R is the wrong season** (Mar–Aug, mean target 64 vs 83) and is simply an easier problem.
+Use it only to confirm a change is not winter-specific, never as a score.
+
+Verified in Phase 3: every fold has a clean +1h gap between train end and val start with zero
+overlap, malformed folds are rejected by assertion, and repeated runs are bit-identical.
 
 **Task 3.1** — Implement `validate.py` exposing one function that takes a feature-building
 function and a model config, runs both folds, and returns per-fold RMSE, mean, spread, plus RMSE
@@ -285,6 +340,17 @@ Remember the legality rule from Fact 1: computable from `test(1).csv` alone.
 - `is_raining` flag and hours-since-rain (rain scavenges particles).
 - Temperature inversion proxy: TEMP now vs TEMP 12/24h ago.
 - **Ventilation index**: WSPM × (some mixing proxy). Worth trying WSPM × hour-of-day interaction.
+
+### Tier C0 — Lead features (do this first; Fact 4)
+**Highest-value tier in the plan — worth ~9 RMSE on its own.** Covariates observed at *t+1*, the
+hour being predicted.
+- lead-1 of every one of PM10, SO2, NO2, CO, O3, TEMP, PRES, DEWP, RAIN, WSPM
+- lead-2 and lead-3 as well (the *t+1* row's own future is also in the test file)
+- **deltas across the prediction boundary**: value at *t+1* minus value at *t*. This is the
+  direction the atmosphere is moving during the hour being predicted, and it is observed, not guessed.
+- city-wide aggregates at *t+1* (see Tier D)
+- Handle the ~0.75% of rows with no *t+1* row by leaving the lead NaN — do not drop them, they
+  appear in the test set and must be predicted.
 
 ### Tier C — Lags and rolling windows of the *legal* pollutants
 For each of PM10, SO2, NO2, CO, O3, TEMP, PRES, DEWP, WSPM, per station:
@@ -617,7 +683,7 @@ Fill this in as you go; it becomes part of the methodology report.
 |---|---|---|---|---|---|
 | D1 | Scripts vs notebooks | | | | |
 | D2 | Git commit discipline | | | | |
-| D3 | Restrict training period? | | | | |
+| D3 | Restrict training period? | all / last-N / decay | **all data, uniform** (settled by experiment, Phase 3) | 2026-09-06 | Every restriction lost: last-2y +0.04, decay-180d +0.10, decay-365d +0.12, last-1y +3.77 |
 | D4 | Submission budget strategy | | | | |
 | D5 | Year / time-trend features | | | | |
 | D6 | Station coordinates (rules risk) | | | | |
@@ -630,6 +696,8 @@ Fill this in as you go; it becomes part of the methodology report.
 | D13 | Post-processing disclosure | | | | |
 | D14 | Final submission choice | | | | |
 | D15 | AI tool disclosure wording | | | | |
+| D7 | Missing value strategy | NaN / interpolate / hybrid | **hybrid: interpolate ≤6h, then cross-station fill, else NaN** | 2026-09-06 | User-approved; worth ~3.1 RMSE (raw baseline 32.96 → 29.88) |
+| D16 | SO2 collapse (−44% in test) | drop / normalise / leave | **drop SO2 entirely** | 2026-09-06 | Fold B tie (17.691 vs 17.692, 4 seeds); ratio-normalising was worse (+0.33). Tie broken on drift, which fold B cannot measure. Both submitted to test it directly |
 
 ---
 
