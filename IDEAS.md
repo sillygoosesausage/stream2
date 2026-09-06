@@ -22,6 +22,55 @@
 
 ---
 
+## ⚠️ STALE — corrections as of 2026-09-06 16:5x (session 3)
+
+**This file was written before the afternoon session and its shortlist is mostly
+refuted.** Read `reports/experiment_record.md` Part II first. Corrections:
+
+| Item | Rating here | Reality |
+|---|---|---|
+| `A1` tier G | rank 1, **H** | **Run. Loses solo** (+0.18 fold B). Kept only as a blend member, where it gained −0.058 |
+| `A2` MEMBERS mutation | rank 2, **H** | Real bug, **fixed**. No past result was corrupted |
+| `P1` bias correction | rank 3, **H** | **Refuted.** §8.3: every rescaling variant is anti-symmetric between folds A and B |
+| `A3`–`A6` audits | H | All **done**; all clean except `A5`, which was confirmed dead and then failed when fixed (§8.5) |
+| `V1` error breakdown | H | **Done** (§8.4) — and its headline finding was attacked and **backfired** (§8.5) |
+| `M1` sqrt target | rank 6 | Actually **already tested** in phase 8: +0.545 |
+| `F1a`, `F2`, `F4`, `F6`, `F11` | H / M | All tested inside tiers G/H. **Six feature families, all negative** |
+| `P2`–`P9` post-processing | M | **All refuted** by §8.3. The only consistent adjustment is worth 0.0004 |
+| `M6` extra_trees | L | **Loses twice**: +2.14 solo and +0.208 in the pool |
+| `V2`–`V9` validation | H (indirect) | `V9` built (`src/paired.py`) and valuable. The rest buy nothing: fold B **cannot rank blends at all** (§9.3, §9.6, §9.8) |
+
+### What this file gets badly wrong
+
+**`M2` feature-subsample ensembling** is listed at rank 11, M/M, as if untried.
+It is in fact the **largest single win in the pool** — the only mechanism that
+produced both the best solo fold-B score (16.189) and genuine decorrelation
+(err corr 0.978). It was run once in phase 9b and never revisited. Worse, the
+submitted member (exp006) used `--frac 0.6` while the *validated* configuration
+was `--frac 0.35`, and the trend across 1.00 → 0.50 → 0.35 is monotone in both
+score and decorrelation. See `R1` below.
+
+**`M5` CatBoost** is listed at rank 15. Given that the five pool members'
+test predictions correlate at **0.9978–0.9996** and share ~94% of their error
+variance, "decorrelated *and* competitive" is the only property that still pays,
+and CatBoost is the last untried candidate with that profile.
+
+### The session-3 shortlist that replaces the one below
+
+| ID | Idea | Status |
+|---|---|---|
+| `R1` | Feature bagging at frac 0.35, 25 bags — the pool's best member is running at the wrong setting | running |
+| `R2a` | Ratio target: regress PM2.5(t+1)/PM10(t+1). `ratio_target_col` was implemented in `models.py` and **wired to nothing** | running |
+| `R2b` | CatBoost — installed, wrapper written (`models.CatBoostModel`) | ready |
+| `R3` | `best_v1` weight gradient | **DONE — loses.** See §9.9. The gradient turns at or below 0.200; weight tuning is exhausted in both directions |
+| `R4` | Confirm the final-submission-selection rule before the deadline | **needs a manual check** — the rules page is JS-rendered and not fetchable |
+
+`R3`'s result also **falsifies the §9.8 dilution hypothesis**, leaving redundancy
+as the mechanism a pool addition must avoid. Do not spend further slots on
+weights; spend them on structurally different members.
+
+---
+
 ## How to use this file
 
 A menu, not a plan. Work the **Shortlist** top-down; drop into the themed sections when

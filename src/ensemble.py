@@ -152,6 +152,25 @@ MEMBERS = {
         "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
         "spike_weight": 1.0,
     }),
+    # R2(a): regress PM2.5(t+1) / PM10(t+1) and multiply the observed
+    # denominator back. `ratio_target_col` was implemented in models.py and
+    # wired to nothing -- this is IDEAS.md F1(b), never scored. Unlike log and
+    # sqrt (both of which lost by compressing the tail RMSE cares about), the
+    # ratio divides by an observed quantity that CARRIES the tail, so the
+    # framing is structurally different rather than merely gentler.
+    "tuned_wspike_ratio": ("best_v1", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+        "ratio_target_col": "C0_lead1_PM10",
+    }),
+    # R2(b): the last untried algorithm. Screened on error correlation against
+    # the pool, not on solo RMSE -- see models.CatBoostModel.
+    "catboost_v1": ("best_v1", "catboost", {
+        "learning_rate": 0.05, "depth": 8, "spike_weight": 1.0,
+    }),
     "tuned_wspike_GH": ("best_v5_GH", "lightgbm", {
         "learning_rate": 0.022009077170577436, "num_leaves": 242,
         "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,

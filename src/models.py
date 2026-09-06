@@ -105,11 +105,15 @@ class LightGBMModel(Model):
         self.ratio_col_ = params.pop("ratio_target_col", None)
         if self.ratio_col_:
             self.ratio_clip_ = params.pop("ratio_clip", 3.0)
-            den = X[self.ratio_col_].to_numpy()
-            y = np.clip(y.to_numpy() / np.maximum(den, 1.0), 0, self.ratio_clip_)
+            # ~0.002% of rows still have a NaN lead after D7. A NaN denominator
+            # would poison the label at fit time and emit NaN predictions at
+            # test time, so fall back to the training median of the column.
+            self.ratio_fallback_ = float(
+                np.nanmedian(X[self.ratio_col_].to_numpy(dtype="float64")))
+            den = self._den(X)
+            y = np.clip(y.to_numpy() / den, 0, self.ratio_clip_)
             if y_val is not None:
-                dv = X_val[self.ratio_col_].to_numpy()
-                y_val = np.clip(y_val.to_numpy() / np.maximum(dv, 1.0),
+                y_val = np.clip(y_val.to_numpy() / self._den(X_val),
                                 0, self.ratio_clip_)
 
         dtrain = lgb.Dataset(X, y, weight=sample_weight)
@@ -133,8 +137,16 @@ class LightGBMModel(Model):
         if getattr(self, "sqrt_target_", False):
             return np.square(np.maximum(p, 0))
         if getattr(self, "ratio_col_", None):
-            return p * np.maximum(X[self.ratio_col_].to_numpy(), 1.0)
+            return p * self._den(X)
         return p
+
+    def _den(self, X) -> np.ndarray:
+        """Denominator for the ratio target: observed PM10 at the target hour,
+        NaN-filled from the training median and floored at 1 to keep the
+        division stable in clean air."""
+        d = X[self.ratio_col_].to_numpy(dtype="float64")
+        d = np.where(np.isfinite(d), d, self.ratio_fallback_)
+        return np.maximum(d, 1.0)
 
     def feature_importance(self) -> pd.Series:
         return pd.Series(
@@ -199,10 +211,84 @@ class XGBoostModel(Model):
         )
 
 
+class CatBoostModel(Model):
+    """CatBoost -- the last untried algorithm with a shot at decorrelation.
+
+    Every member of the standing pool is LightGBM on an L2 objective over the
+    same feature basis, and their test predictions correlate at 0.998-0.9996.
+    CatBoost differs on three axes at once: symmetric (oblivious) trees rather
+    than leaf-wise growth, ordered boosting rather than plain gradient steps,
+    and ordered target statistics for `station`/`wd` rather than the split-set
+    search LightGBM uses. XGBoost failed to decorrelate (err corr 0.949) but
+    also failed on quality; the pool needs a member that is different AND
+    within ~10% of the incumbent (experiment_record.md 9.7).
+    """
+
+    name = "catboost"
+
+    DEFAULTS = {
+        "loss_function": "RMSE",
+        "eval_metric": "RMSE",
+        "learning_rate": 0.05,
+        "depth": 8,
+        "l2_leaf_reg": 3.0,
+        "random_strength": 1.0,
+        "bootstrap_type": "Bernoulli",
+        "subsample": 0.9,
+        "verbose": False,
+        "allow_writing_files": False,
+    }
+    NUM_BOOST_ROUND = 3000
+    EARLY_STOPPING = 100
+
+    @staticmethod
+    def _prep(X: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+        """CatBoost categoricals must be str/int with no NaN, so stringify the
+        two pandas Categorical columns and give missing wind its own level."""
+        X = X.copy()
+        cats = [c for c in X.columns
+                if str(X[c].dtype) in ("category", "object")]
+        for c in cats:
+            X[c] = X[c].astype(object).where(X[c].notna(), "NA").astype(str)
+        return X, cats
+
+    def _fit(self, X, y, X_val, y_val, sample_weight=None):
+        from catboost import CatBoostRegressor, Pool
+
+        params = {**self.DEFAULTS, **self.params}
+        rounds = params.pop("num_boost_round", self.NUM_BOOST_ROUND)
+        # ensemble.fit_member passes the LightGBM seed aliases; CatBoost has one.
+        seed = params.pop("seed", C.SEED)
+        for k in ("bagging_seed", "feature_fraction_seed", "random_state",
+                  "spike_weight"):
+            params.pop(k, None)
+
+        Xf, cats = self._prep(X)
+        self.cat_cols_ = cats
+        train_pool = Pool(Xf, y, weight=sample_weight, cat_features=cats)
+        eval_pool = None
+        if X_val is not None:
+            eval_pool = Pool(self._prep(X_val)[0], y_val, cat_features=cats)
+
+        self.model_ = CatBoostRegressor(
+            iterations=rounds, random_seed=seed,
+            early_stopping_rounds=self.EARLY_STOPPING if eval_pool else None,
+            **params,
+        )
+        self.model_.fit(train_pool, eval_set=eval_pool, verbose=False)
+        self.best_iteration_ = (self.model_.get_best_iteration()
+                                if eval_pool else rounds) or rounds
+        return self
+
+    def _predict(self, X):
+        return self.model_.predict(self._prep(X)[0])
+
+
 REGISTRY = {
     "mean": MeanModel,
     "lightgbm": LightGBMModel,
     "xgboost": XGBoostModel,
+    "catboost": CatBoostModel,
 }
 
 

@@ -733,3 +733,49 @@ submission or was an unfitted equal-weight construction. There is no cheap local
 substitute.
 
 Final position: **exp022, five members, equal weights, LB 18.54180.**
+
+### 9.9 The dilution hypothesis is false: redundancy is what a pool addition must avoid
+
+§9.8 ended with a hypothesis offered explicitly as such — that equal-weight
+addition is *dilutive*, and that exp024 lost because going from five members to
+six dropped `best_v1`'s share from 0.200 to 0.167, `best_v1` being the only
+structurally distinct model in the pool and by §9.2 the most valuable per unit
+of weight.
+
+That hypothesis makes a sharp prediction: if `best_v1`'s share is *raised* above
+0.200, the pool should improve. The prediction had never been tested. Every
+weight probe in §9.2 moved `best_v1` **down** (exp017 gave it 0.20 against
+exp015's 0.333), so the upper half of the curve was entirely unexplored.
+
+| Submission | `best_v1` share | LB |
+|---|---|---|
+| exp007 | 0.000 | 18.69287 |
+| exp017 | 0.200 (of 3 members) | 18.62090 |
+| exp015 | 0.333 (of 3 members) | 18.61153 |
+| **exp022** | **0.200 (of 5 members)** | **18.54180** |
+| exp026 | 0.333 (of 5 members) | 18.54952 |
+| exp027 | 0.429 (of 5 members) | 18.57308 |
+
+**The gradient turns at or below 0.200.** exp026 loses 0.008 — inside the ~0.02
+leaderboard noise on its own — but exp027 loses 0.031, which is outside it, and
+the two form a monotone trend. Raising `best_v1`'s weight does not help.
+
+The dilution hypothesis is therefore **false**, and with it the last available
+excuse for exp024. What remains is the simpler explanation, which is also the
+one §9.2 already gave twice: `tuned_mf` is a *fourth tuned LightGBM on the
+best_v1 feature set*, and it adds no direction the pool does not already have.
+That is exactly why `exp003` (a degraded best_v1) and `exp005` (itself a blend
+of two pool members) both hurt. Three independent failures, one mechanism.
+
+**The operative rule is therefore about redundancy, not about weight.** A pool
+addition must contribute a direction no incumbent contributes. Weight tuning
+is not merely unreliable — on this pool it is exhausted, in both directions,
+and equal weights are the optimum as well as the safest construction.
+
+A note on what this costs the project's stock of local rules. Four have now been
+proposed and falsified: nested addition (§9.6, killed by §9.8), decorrelation
+alone (§9.5, narrowed by §9.7), solo-quality ordering (§9.7, killed by §9.8),
+and dilution (§9.8, killed here). The honest position is that **no local
+criterion has ever predicted a pool addition correctly on this problem**, and
+`src/screen.py` was written to report the two component properties without
+gating on either, precisely so that it cannot become the fifth.
