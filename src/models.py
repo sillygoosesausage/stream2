@@ -82,6 +82,15 @@ class LightGBMModel(Model):
         params = {**self.DEFAULTS, **self.params}
         rounds = params.pop("num_boost_round", self.NUM_BOOST_ROUND)
 
+        # Train on log1p(target) and invert at predict time. Expected to LOSE
+        # on RMSE -- it optimises relative error, under-weighting exactly the
+        # large values RMSE cares about -- but its errors are decorrelated from
+        # a plain L2 model, which is what an ensemble wants.
+        self.log_target_ = bool(params.pop("log_target", False))
+        if self.log_target_:
+            y = np.log1p(y)
+            y_val = np.log1p(y_val) if y_val is not None else None
+
         dtrain = lgb.Dataset(X, y, weight=sample_weight)
         callbacks = [lgb.log_evaluation(0)]
         valid_sets = []
@@ -97,7 +106,8 @@ class LightGBMModel(Model):
         return self
 
     def _predict(self, X):
-        return self.booster_.predict(X, num_iteration=self.best_iteration_)
+        p = self.booster_.predict(X, num_iteration=self.best_iteration_)
+        return np.expm1(p) if getattr(self, "log_target_", False) else p
 
     def feature_importance(self) -> pd.Series:
         return pd.Series(
@@ -106,9 +116,66 @@ class LightGBMModel(Model):
         ).sort_values(ascending=False)
 
 
+class XGBoostModel(Model):
+    """XGBoost with native categorical support.
+
+    Kept for ensemble diversity: it splits differently from LightGBM
+    (level-wise vs leaf-wise), so its errors decorrelate even at a similar
+    solo score, which is what a blend needs.
+    """
+
+    name = "xgboost"
+
+    DEFAULTS = {
+        "objective": "reg:squarederror",
+        "eval_metric": "rmse",
+        "tree_method": "hist",
+        "max_depth": 8,
+        "learning_rate": 0.05,
+        "subsample": 0.9,
+        "colsample_bytree": 0.9,
+        "min_child_weight": 5,
+        "max_cat_to_onehot": 1,
+        "verbosity": 0,
+        "nthread": 0,
+    }
+    NUM_BOOST_ROUND = 3000
+    EARLY_STOPPING = 100
+
+    def _fit(self, X, y, X_val, y_val, sample_weight=None):
+        import xgboost as xgb
+
+        params = {**self.DEFAULTS, **self.params}
+        rounds = params.pop("num_boost_round", self.NUM_BOOST_ROUND)
+        params.pop("seed", None)
+        params.pop("bagging_seed", None)
+        params.pop("feature_fraction_seed", None)
+
+        dtrain = xgb.DMatrix(X, y, weight=sample_weight, enable_categorical=True)
+        evals, es = [], None
+        if X_val is not None:
+            evals = [(xgb.DMatrix(X_val, y_val, enable_categorical=True), "val")]
+            es = self.EARLY_STOPPING
+
+        self.booster_ = xgb.train(
+            params, dtrain, num_boost_round=rounds, evals=evals,
+            early_stopping_rounds=es, verbose_eval=False,
+        )
+        self.best_iteration_ = getattr(self.booster_, "best_iteration", rounds)
+        return self
+
+    def _predict(self, X):
+        import xgboost as xgb
+        d = xgb.DMatrix(X, enable_categorical=True)
+        return self.booster_.predict(
+            d, iteration_range=(0, self.best_iteration_ + 1)
+        )
+
+
 REGISTRY = {
     "mean": MeanModel,
     "lightgbm": LightGBMModel,
+    "xgboost": XGBoostModel,
 }
 
 
