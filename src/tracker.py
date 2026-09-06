@@ -86,14 +86,36 @@ def show() -> None:
     if n >= 3:
         rank_r = pd.Series(x).corr(pd.Series(y), method="spearman")
         print(f"rank correlation (Spearman)      : {rank_r:.4f}")
+
+        # Ranking and transfer are separate questions. Ranking says whether
+        # local can pick the better model; slope says how much of a local gain
+        # actually reaches the leaderboard. A slope well under 1 means the
+        # validation set is being overfitted even while ranking stays perfect.
         if rank_r > 0.9:
-            print("\n=> Local validation tracks the leaderboard. Trust it.")
+            print("\n=> RANKING: local picks the better model reliably.")
         elif rank_r > 0.6:
-            print("\n=> Partial agreement. Prefer local, but verify big changes.")
+            print("\n=> RANKING: partial agreement. Verify big changes.")
         else:
-            print("\n=> Local validation DISAGREES with the leaderboard. "
-                  "Stop tuning on it and re-examine the fold design "
-                  "(PLAN.md Appendix C).")
+            print("\n=> RANKING: local DISAGREES with the leaderboard. "
+                  "Re-examine the fold design (PLAN.md Appendix C).")
+
+        print(f"\nTRANSFER: {slope:.2f} of each 1.0 local gain reaches the "
+              f"leaderboard.")
+        drift = np.polyfit(x, y - x, 1)[0]
+        if slope < 0.7:
+            print("   => Local gains are being heavily discounted. This is the "
+                  "signature of\n      overfitting the validation fold. Widen "
+                  "the metric (more folds, or the\n      mean of several) "
+                  "before tuning further -- improving the measurement\n"
+                  "      is worth more than improving the model.")
+        elif slope < 0.9:
+            print("   => Some discounting. Watch it; if the slope keeps "
+                  "falling, widen the metric.")
+        else:
+            print("   => Gains transfer well.")
+        if drift < -0.2:
+            print(f"   => The offset is GROWING as local improves "
+                  f"({drift:+.2f} per unit). Same warning.")
 
 
 def main() -> None:

@@ -1,0 +1,20 @@
+{
+  "best_value": 19.776467121964167,
+  "baseline": 20.16906483971087,
+  "params": {
+    "learning_rate": 0.023200077462577844,
+    "num_leaves": 188,
+    "min_data_in_leaf": 172,
+    "feature_fraction": 0.6835850303764879,
+    "bagging_fraction": 0.9490925080146037,
+    "bagging_freq": 6,
+    "lambda_l1": 0.14740587787224071,
+    "lambda_l2": 0.049343841032299995,
+    "spike_weight": 2.3091811318873208
+  },
+  "folds": [
+    "A",
+    "B"
+  ],
+  "feature_set": "best_v1"
+}

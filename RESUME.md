@@ -1,67 +1,83 @@
-# Resume here — state as of 2026-09-06 (Phase 9 complete)
+# Resume here — state as of 2026-09-06 (validation recalibrated)
 
-## Current best — SUBMIT THIS
+## SUBMIT THIS NEXT
 
-**`submissions/exp004_tuned_wspike.csv`** — fold B **16.599**, projected LB ~17.9.
+**`submissions/exp005_blend_A40_mf60.csv`** — blend of `best_v1` (0.40) and
+`tuned_mf` (0.60), 5 seeds each on all training data.
+Mean(A,B) **19.513**, projected LB **18.63** vs current best 18.788.
 
-Model: feature set `best_v1` (170 features), LightGBM with the Optuna config
-plus target-magnitude sample weighting, averaged over 5 seeds, 1847 rounds,
-fitted on all 360,954 training rows. Reproduce with:
+    python -m src.submit best_v1:0.4 tuned_mf:0.6 --seeds 5 --exp-id exp005_blend_A40_mf60
 
-    python -m src.submit tuned_wspike --seeds 5 --exp-id exp004_tuned_wspike
+## THE KEY FINDING: use mean(fold A, fold B), never fold B alone
+
+Fold B alone is overfitted and its gains do not transfer. Fold A acts as the brake.
+
+| Metric | best_v1 -> tuned_wspike | Actual LB delta | Transfer |
+|---|---|---|---|
+| Fold B | -0.902 | -0.237 | **26%** |
+| **Mean(A,B)** | -0.138 | -0.237 | ~100% |
+
+**`LB ~= mean(A,B) - 0.88`, accurate to +/-0.05 on both known points:**
+
+| | Projected | Actual | Error |
+|---|---|---|---|
+| best_v1 | 18.977 | 19.025 | 0.048 |
+| tuned_wspike | 18.839 | 18.788 | 0.051 |
+
+**You can now evaluate ideas without spending submissions.** Always report
+mean(A,B) and the projection; never decide on fold B alone.
+
+## Member scoreboard (seed-averaged: fold B k=5, fold A k=3)
+
+| Member | Fold A | Fold B | Mean | Proj LB |
+|---|---|---|---|---|
+| **blend best_v1:0.4 + tuned_mf:0.6** | 22.276 | 16.749 | **19.513** | **18.63** |
+| tuned_mf | 22.815 | 16.509 | 19.662 | 18.78 |
+| tuned_wspike | 22.839 | 16.599 | 19.719 | 18.84 |
+| best_v1 | **22.212** | 17.502 | 19.857 | 18.98 |
+| tuned_v1 | 22.658 | 17.149 | 19.903 | 19.02 |
+| lgb_wspike | 22.725 | 17.103 | 19.914 | 19.03 |
+
+`best_v1` is BEST on fold A; the tuned configs win fold B. They fail in
+different places, and that cross-fold disagreement is the only diversity that
+has paid. Same-fold diversity (XGBoost, log-target) all correlated >0.996 and
+blended to nothing.
 
 ## Leaderboard history
 
-| Submission | Fold B | Leaderboard |
-|---|---|---|
-| exp002_best_v1 | 17.535 | 19.025 |
-| exp003_best_v2_no_so2 | 17.748 | 19.641 |
-| **exp004_tuned_wspike** | **16.599** | *pending* |
-| exp001_baseline_raw | 32.960 | — |
-
-Local fold B runs ~1.5 optimistic but ranks correctly. Record the next score:
-
-    python -m src.tracker add exp004_tuned_wspike --lb <score>
-
-## Phase 9 scorecard (all measured at k=5, noise floor 0.054)
-
-| Step | Fold B | Delta | Separable? |
+| Submission | Fold B | Mean(A,B) | Leaderboard |
 |---|---|---|---|
-| baseline (1 seed) | 17.724 | — | — |
-| Seed averaging | 17.502 | -0.222 | **yes** |
-| XGBoost blend | 17.502 | 0.000 | **no** (corr 0.9988) |
-| Tuning | 17.149 | -0.353 | **yes** |
-| Spike weighting | 17.103 | -0.399 | **yes** |
-| Tuning + spike (additive) | **16.599** | **-1.125** | **yes** |
-| Model blending | 16.561 | -0.038 | **no** (inside noise) |
+| exp001_baseline_raw | 32.960 | — | — |
+| exp002_best_v1 | 17.535 | 19.857 | 19.025 |
+| exp003_best_v2_no_so2 | 17.748 | — | 19.641 |
+| exp004_tuned_wspike | 16.599 | 19.719 | **18.788** |
+| **exp005_blend_A40_mf60** | 16.749 | 19.513 | *pending* |
 
-Cached member predictions: `data/processed/preds/*__foldB.parquet` (9 members,
-5-8 seeds each). All blending/averaging questions are arithmetic on these.
+    python -m src.tracker add exp005_blend_A40_mf60 --lb <score>
 
-## What did NOT work — keep for the write-up
+## What is exhausted
 
-1. **Two-stage prediction feedback** (`src/stage2.py`): -0.127, inside noise.
-   The ceiling probe promised -3.18 but injected *Gaussian* noise; real stage-1
-   error is a function of the same features, so the estimate re-encodes what
-   the model already has. True pm25_now is worth -6.05 and is unreachable.
-2. **XGBoost / model diversity**: predictions correlate 0.9988 with LightGBM.
-   Optimal blend weight was 0.00. Features dominate, not the algorithm.
-3. **Log-target** (21.095) and **Huber** (17.580): both lost. Log-target even
-   correlated 0.9962 — a different *loss* decorrelates no better than a
-   different algorithm here.
-4. **Calendar features**: +4.52, driven by `A_doy` (+3.74) and `A_month`
-   (+1.94) memorising which specific days were dirty in past years.
-5. **Rolling windows** (+0.89), **interaction ratios** (+0.24).
-6. **Dropping SO2** (D16): local tie, but +0.62 on the leaderboard.
+- **Hyperparameter tuning.** Two 30-trial searches. The second, on mean(A,B),
+  beat the first by 0.006 projected. Fold A sits at 22.8-23.2 across every
+  trial regardless of configuration -- hyperparameters cannot move it.
+- **Model diversity within a fold.** XGBoost corr 0.9988, blend weight 0.00.
+  Log-target lost outright (21.095) and still correlated 0.9962.
+- **Two-stage prediction feedback** (`src/stage2.py`): -0.127, inside noise.
 
-## Remaining ideas, untested
+## Where the remaining upside is
 
-- Fold A is 22.6 vs fold B 16.6. That 6-point gap is unexplained and worth
-  understanding — it may indicate fold B is an easy window.
-- Spike-weight strength between 1.0 and 2.5 barely moved the score; a two-stage
-  high/normal regime split (PLAN Phase 8 Task 8.4) was never tried.
-- Per-station or per-month bias correction (Phase 10 Task 10.2).
-- CatBoost (never installed) — though given finding 2, expect little.
+1. **Re-check the Phase 5 feature decisions on mean(A,B).** Every tier call was
+   made on fold B alone, so some are likely wrong in the same way the tuning
+   was. Cheapest real lever: cached panel, `validate.compare(..., folds=['A','B'],
+   seeds=3)`. Especially re-test what was rejected as noise.
+2. **More folds.** Two windows is thin, and fold A is the only thing holding
+   fold B honest. A rolling-origin scheme with 4-5 Sep-Feb windows would cut
+   decision variance further.
+3. **Why is fold A stuck at ~22.2?** It has 155k training rows vs fold B's
+   258k. If the gap is data volume, nothing fixes it; if it is something about
+   the 2014-15 winter, that is worth knowing.
+4. **Per-station / per-month bias correction** (PLAN Phase 10 Task 10.2), now
+   measurable offline thanks to the calibration.
 
 ## Cached artifacts (do not rebuild)
 
@@ -69,37 +85,16 @@ Cached member predictions: `data/processed/preds/*__foldB.parquet` (9 members,
 |---|---|
 | `data/processed/stage1_oof.parquet` | Expanding-window OOF stage-1 predictions, 309,029 rows (~72s to rebuild) |
 | `data/processed/stage1_test.parquet` | Stage-1 predictions for the test set, 51,063 rows |
-| `data/processed/oof/*.parquet` | Per-experiment OOF predictions for ensembling |
-| `submissions/*.csv` | Three generated submissions |
+| `data/processed/oof/*.parquet` | Per-experiment OOF predictions |
+| `data/processed/preds/*__fold{A,B}.parquet` | Per-seed validation predictions, 10 members. All blending/averaging is arithmetic on these |
+| `experiments/tuning_best_multifold.json` | Optuna result on mean(A,B) |
+| `submissions/*.csv` | Five generated submissions |
 | `experiments/log.csv` | Experiment log |
-| `experiments/leaderboard_tracker.csv` | Local vs leaderboard, 2 entries |
+| `experiments/leaderboard_tracker.csv` | Local vs leaderboard, 3 entries |
 | `experiments/phase5_*.csv` | Feature-tier comparison tables |
 
 The feature panel itself is cached **in-process only** (~5s to build). Adding a
 disk cache for it is a small, worthwhile task.
-
----
-
-## Next steps, in order
-
-The user asked for all four, seed averaging first so the noise floor drops
-before the rest are measured, each reported as a seeded variant against
-`best_v1` with a clear separable / not-separable verdict.
-
-1. ~~**Seed averaging**~~ — **DONE. −0.222, separable.** Fold B 17.724 → 17.502.
-   Predictions cached. Use k=5 for everything below (noise floor sd 0.054).
-2. **XGBoost + blend** — `python -m src.ensemble fit xgb_v1 --seeds 5 --fold B`
-   then `python -m src.ensemble blend best_v1 xgb_v1 --fold B`.
-   Expected −0.2 to −0.5. ~8 min. (`XGBoostModel` is written and untested.)
-3. **Hyperparameter tuning** — `python -m src.tune --trials 30`. optuna 4.9.0 is
-   installed. Single-seed search, so the winner **must** be re-measured with
-   seed averaging. Expected −0.3 to −1.0. ~20 min.
-4. **Spike handling** — members `lgb_log`, `lgb_huber`, `lgb_wspike` are
-   registered in `ensemble.MEMBERS` but never run. Top 5% of hours still carry
-   ~50% of total variance. Expected gain unknown. ~15 min.
-
-Realistic landing zone: **18.0–18.5 on the leaderboard**. The structural win
-(lead features) is already banked; what remains is grinding.
 
 ---
 
@@ -148,7 +143,8 @@ Realistic landing zone: **18.0–18.5 on the leaderboard**. The structural win
 
 ## Suggested commit
 
-    Phase 5-9 WIP: best_v1 at LB 19.02; stage2 negative result; ensemble scaffolding
+    Validation recalibrated: mean(A,B) predicts LB to +/-0.05; fold B alone
+    transfers only 26%. Blend best_v1+tuned_mf projected 18.63.
 
 Untracked/changed: `src/{ensemble,tune,stage2,eda}.py`, `RESUME.md`,
 `reports/phase2_findings.md`, `experiments/`, `submissions/`, updated

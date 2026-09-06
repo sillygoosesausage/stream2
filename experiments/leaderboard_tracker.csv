@@ -1,3 +1,4 @@
 exp_id,date,fold_A,fold_B,local,leaderboard,notes
 exp002_best_v1,2026-09-06T02:41:07,22.6175,17.5353,17.5353,19.02468,"with SO2, 170 feat"
 exp003_best_v2_no_so2,2026-09-06T02:41:08,22.8127,17.7482,17.7482,19.64126,"no SO2, 155 feat"
+exp004_tuned_wspike,2026-09-06T12:10:48,,16.599,16.599,18.78847,tuned+spike 5seed

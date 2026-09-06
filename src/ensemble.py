@@ -73,6 +73,21 @@ MEMBERS = {
         "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
         "spike_weight": 2.0,
     }),
+    # Optuna, 30 trials against mean(fold A, fold B) with spike weight searched
+    # (experiments/tuning_best_multifold.json). The fold-B-only config gained
+    # 0.90 on B but LOST 0.63 on A; this one is chosen on the metric that
+    # actually tracks the leaderboard.
+    "tuned_mf": ("best_v1", "lightgbm", {
+        "learning_rate": 0.023200077462577844,
+        "num_leaves": 188,
+        "min_data_in_leaf": 172,
+        "feature_fraction": 0.6835850303764879,
+        "bagging_fraction": 0.9490925080146037,
+        "bagging_freq": 6,
+        "lambda_l1": 0.14740587787224071,
+        "lambda_l2": 0.049343841032299995,
+        "spike_weight": 2.3091811318873208,
+    }),
     "lgb_wspike2": ("best_v1", "lightgbm", {"learning_rate": 0.05, "num_leaves": 127,
                                             "spike_weight": 2.5}),
 }
