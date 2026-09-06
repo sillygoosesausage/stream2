@@ -90,6 +90,75 @@ MEMBERS = {
     }),
     "lgb_wspike2": ("best_v1", "lightgbm", {"learning_rate": 0.05, "num_leaves": 127,
                                             "spike_weight": 2.5}),
+    # Incumbent params on best_v1 + tier G (~90 extra lead/anomaly/city columns).
+    # Tier G was written but never wired to a member, so it had never been
+    # scored on any fold. Pruning showed the model is not saturated on feature
+    # count (all-170 beats every subset), so widening is not an obvious risk.
+    "tuned_wspike_G": ("best_v3_leadmax", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+    }),
+    # Tier H: the families with no analogue elsewhere -- centred windows around
+    # the predicted hour, pre-impute observation flags, lead interactions,
+    # rain at t+1, inversion proxy. Split so a win can be attributed.
+    "tuned_wspike_H": ("best_v4_H", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+    }),
+    "tuned_wspike_Hcw": ("best_v4_Hcw", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+    }),
+    "tuned_wspike_Hrest": ("best_v4_Hrest", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+    }),
+    # M13: half the learning rate, and let early stopping find the rounds. The
+    # tuner searched lr in a band around 0.022 and never went below it.
+    "tuned_wspike_lowlr": ("best_v1", "lightgbm", {
+        "learning_rate": 0.011, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+    }),
+    # M6: randomised split thresholds. A genuine change of inductive bias for
+    # one parameter -- the cheap version of the decorrelation XGBoost failed to
+    # provide (corr 0.9988).
+    "tuned_wspike_xt": ("best_v1", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+        "extra_trees": True,
+    }),
+    "tuned_wspike_Hobs": ("best_v4_Hobs", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+    }),
+    "tuned_wspike_GH": ("best_v5_GH", "lightgbm", {
+        "learning_rate": 0.022009077170577436, "num_leaves": 242,
+        "min_data_in_leaf": 134, "feature_fraction": 0.6649900721373205,
+        "bagging_fraction": 0.6542533236720767, "bagging_freq": 5,
+        "lambda_l1": 4.714235909254678, "lambda_l2": 1.393978675022225,
+        "spike_weight": 1.0,
+    }),
 }
 
 
@@ -107,7 +176,12 @@ def fit_member(name: str, seeds: int = 5, fold: str = "B",
             print(f"using cached {path.name} ({got.shape[1]} seeds)")
             return got
 
+    # NB: copy the params dict. `base_params.pop("spike_weight")` below
+    # would otherwise delete the key from MEMBERS for the life of the
+    # process, so a second fit of the same member in one session would
+    # silently run UNWEIGHTED.
     fset, model_name, base_params = MEMBERS[name]
+    base_params = dict(base_params)
     train = D.load_train()
     X = F.build_set(train, fset)
     y = train[C.TARGET]

@@ -261,9 +261,181 @@ def _tier_F(p: pd.DataFrame) -> dict:
     }
 
 
+def _tier_G(p: pd.DataFrame) -> dict:
+    """Extended leads. Tier C0 was worth -9.15 RMSE; this pushes the same idea
+    further, since everything at t+1..t+3 is present in the test file."""
+    out = {}
+    g = lambda col, k: p.groupby(level=0, observed=True)[col].shift(k)
+    by_hour = lambda s: s.groupby(level=1, observed=True)
+
+    # Deeper leads for the pollutants that matter most.
+    for col in ["PM10", "CO", "NO2", "O3", "WSPM", "TEMP", "PRES", "DEWP"]:
+        for k in (4, 5, 6):
+            out[f"G_lead{k}_{col}"] = g(col, -k).astype("float32")
+
+    # Changes measured across and beyond the prediction boundary.
+    for col in ["PM10", "CO", "NO2", "WSPM", "PRES"]:
+        out[f"G_delta2_{col}"] = (g(col, -2) - p[col]).astype("float32")
+        out[f"G_delta3_{col}"] = (g(col, -3) - p[col]).astype("float32")
+        # Acceleration: is the change itself speeding up?
+        out[f"G_accel_{col}"] = (g(col, -2) - 2 * g(col, -1) + p[col]).astype("float32")
+
+    # Derived meteorology AT the predicted hour. Phase 2 found RH and dew point
+    # depression far stronger than their raw inputs (0.374 / -0.389 vs ~0.12).
+    t1, d1 = g("TEMP", -1), g("DEWP", -1)
+    rh1 = 100 * (np.exp(17.625 * d1 / (243.04 + d1))
+                 / np.exp(17.625 * t1 / (243.04 + t1)))
+    out["G_lead1_rh"] = rh1.clip(0, 100).astype("float32")
+    out["G_lead1_dpd"] = (t1 - d1).astype("float32")
+    out["G_rh_delta"] = (rh1.clip(0, 100) - 100 * (
+        np.exp(17.625 * p["DEWP"] / (243.04 + p["DEWP"]))
+        / np.exp(17.625 * p["TEMP"] / (243.04 + p["TEMP"]))).clip(0, 100)
+    ).astype("float32")
+
+    # City-wide aggregates at the predicted hour, for every pollutant. Tier D
+    # only carried PM10/CO/NO2 leads.
+    for col in ["PM10", "SO2", "NO2", "CO", "O3", "WSPM", "TEMP"]:
+        city = by_hour(p[col]).transform("mean")
+        gc = city.groupby(level=0, observed=True)
+        out[f"G_city_lead1_{col}"] = gc.shift(-1).astype("float32")
+        if col in ("PM10", "CO"):
+            out[f"G_city_lead2_{col}"] = gc.shift(-2).astype("float32")
+            out[f"G_city_lead3_{col}"] = gc.shift(-3).astype("float32")
+        # How anomalous is this station at the predicted hour?
+        out[f"G_anom_lead1_{col}"] = (g(col, -1) - gc.shift(-1)).astype("float32")
+
+    # Spread across the city at t+1: a wide spread means a front is moving
+    # through and the city mean is a poor summary.
+    for col in ["PM10", "CO"]:
+        gmax = by_hour(p[col]).transform("max").groupby(level=0, observed=True)
+        gmin = by_hour(p[col]).transform("min").groupby(level=0, observed=True)
+        out[f"G_city_range_lead1_{col}"] = (gmax.shift(-1) - gmin.shift(-1)).astype("float32")
+
+    # PM10 at t+1 relative to this station's recent history -- normalises away
+    # chronically dirty vs clean sites.
+    roll = (p.groupby(level=0, observed=True)["PM10"]
+             .rolling(24, min_periods=4).mean().reset_index(level=0, drop=True))
+    out["G_pm10_lead1_vs_roll24"] = (g("PM10", -1) / (roll + 1)).astype("float32")
+    out["G_co_lead1_vs_roll24"] = (
+        g("CO", -1) / (p.groupby(level=0, observed=True)["CO"]
+                        .rolling(24, min_periods=4).mean()
+                        .reset_index(level=0, drop=True) + 1)
+    ).astype("float32")
+
+    # Ratios at the predicted hour.
+    out["G_lead1_co_over_no2"] = (g("CO", -1) / (g("NO2", -1) + 1)).astype("float32")
+    out["G_lead1_pm10_x_rh"] = (g("PM10", -1) * rh1.clip(0, 100) / 100).astype("float32")
+    out["G_lead1_pm10_per_wspm"] = (g("PM10", -1) / (g("WSPM", -1) + 0.1)).astype("float32")
+    return out
+
+
+def _tier_H(p: pd.DataFrame, raw: pd.DataFrame) -> dict:
+    """The feature families with no analogue anywhere else in the file.
+
+    Everything here is a covariate of the *predicted* hour or its immediate
+    neighbourhood, so it is computable on the test frame exactly as on train.
+    `raw` is the PRE-imputation panel, used only for the observation flags.
+    """
+    out = {}
+    g = lambda col, k: p.groupby(level=0, observed=True)[col].shift(k)
+    by_hour = lambda s: s.groupby(level=1, observed=True)
+
+    # --- F2: windows CENTRED on the predicted hour ------------------------
+    # Every window in tier C is trailing, and the trailing rollings lost
+    # (+0.89). A window spanning t-1..t+3 is legal -- all of it is observed in
+    # the test file -- and describes the episode the target hour sits INSIDE
+    # rather than the one leading up to it. Centre them; do not also re-admit
+    # the trailing ones.
+    for col in ["PM10", "CO", "NO2", "WSPM", "TEMP"]:
+        s3 = g(col, -3)                     # so rolling(5) spans t-1 .. t+3
+        r = (s3.groupby(level=0, observed=True)
+               .rolling(5, min_periods=2).agg(["mean", "std", "min", "max"])
+               .reset_index(level=0, drop=True))
+        for stat in ("mean", "std", "min", "max"):
+            out[f"H_cw5_{stat}_{col}"] = r[stat].astype("float32")
+        # Where does the predicted hour sit inside its own local window?
+        out[f"H_cw5_pos_{col}"] = (
+            (g(col, -1) - r["mean"]) / (r["std"] + 1e-3)
+        ).astype("float32")
+
+    # --- A5: is the dominant feature observed, or fabricated? -------------
+    # C0_has_lead is built on the IMPUTED panel, so it is ~always 1 and carries
+    # nothing. Built from `raw` it becomes the signal the model most needs:
+    # whether C0_lead1_PM10 -- half of all feature gain -- is a real reading.
+    rg = lambda col, k: raw.groupby(level=0, observed=True)[col].shift(k)
+    obs = {}
+    for col in ["PM10", "CO", "NO2", "SO2", "O3", "WSPM", "TEMP"]:
+        o = rg(col, -1).notna()
+        obs[col] = o.astype("int8")
+        out[f"H_obs_lead1_{col}"] = obs[col]
+    out["H_obs_lead1_n"] = sum(obs.values()).astype("int8")
+    # The UN-imputed lead, NaN preserved. Measured on fold B: the 430 rows
+    # (0.84%) whose lead1_PM10 was fabricated carry 16.6% of all squared error
+    # -- RMSE 74.0 against 15.2 elsewhere. C0_lead1_* hands the model a filled
+    # value indistinguishable from a reading; this column lets LightGBM route
+    # those rows down their own branch instead.
+    for col in ["PM10", "CO", "NO2"]:
+        out[f"H_rawlead1_{col}"] = rg(col, -1).astype("float32")
+        out[f"H_rawlead2_{col}"] = rg(col, -2).astype("float32")
+    out["H_rawnow_PM10"] = raw["PM10"].astype("float32")
+    out["H_obs_now_PM10"] = raw["PM10"].notna().astype("int8")
+    # How many stations actually reported PM10 at the predicted hour (F16):
+    # sensors fail in bad weather, so the count may proxy extreme conditions.
+    out["H_city_obs_lead1_PM10"] = (
+        by_hour(raw["PM10"].notna().astype("float32")).transform("sum")
+        .groupby(level=0, observed=True).shift(-1).astype("float32")
+    )
+
+    # --- F18 / F4: interactions the trees must otherwise build by splitting -
+    pm1 = g("PM10", -1)
+    city_pm1 = (by_hour(p["PM10"]).transform("mean")
+                .groupby(level=0, observed=True).shift(-1))
+    out["H_ix_pm10_x_city"] = (pm1 * city_pm1 / 100.0).astype("float32")
+    # When the station and the city disagree at t+1, which one is right?
+    out["H_ix_pm10_over_city"] = (pm1 / (city_pm1 + 1.0)).astype("float32")
+    # Advection: wind carries the plume. A product a tree gets in one split.
+    deg = p["wd"].cat.codes.astype("float32") * 22.5
+    deg = deg.where(p["wd"].notna())
+    rad = np.deg2rad(deg)
+    u1 = (p["WSPM"] * np.sin(rad)).groupby(level=0, observed=True).shift(-1)
+    v1 = (p["WSPM"] * np.cos(rad)).groupby(level=0, observed=True).shift(-1)
+    out["H_ix_pm10_x_windu"] = (pm1 * u1 / 10.0).astype("float32")
+    out["H_ix_pm10_x_windv"] = (pm1 * v1 / 10.0).astype("float32")
+    out["H_ix_city_x_wspm"] = (city_pm1 * g("WSPM", -1) / 10.0).astype("float32")
+
+    # --- F6: scavenging happens DURING the predicted hour -----------------
+    # B_is_raining is at t. Rain at t+1 is the one that removes the aerosol.
+    out["H_rain_lead1"] = (g("RAIN", -1) > 0).astype("int8")
+    for w in (6, 24):
+        out[f"H_rain_cum{w}"] = (
+            g("RAIN", -1).groupby(level=0, observed=True)
+             .rolling(w, min_periods=1).sum().reset_index(level=0, drop=True)
+        ).astype("float32")
+    # Hours since it last rained. Positions are contiguous hourly within a
+    # station because the panel is a complete station x hour grid.
+    wet = p["RAIN"] > 0
+    idx = pd.Series(np.arange(len(p)), index=p.index)
+    last_wet = idx.where(wet).groupby(level=0, observed=True).ffill()
+    out["H_rain_hours_since"] = ((idx - last_wet).fillna(999)
+                                 .clip(0, 999).astype("float32"))
+
+    # --- F11: vertical stability, which nothing else expresses -------------
+    # Nocturnal inversions are the mechanism behind Beijing's worst episodes:
+    # warm air aloft caps a shallow, calm boundary layer and pollution
+    # accumulates. Proxy it with the temperature change plus low wind.
+    dT = (g("TEMP", -1) - g("TEMP", 12)).astype("float32")
+    out["H_inv_dtemp12"] = dT
+    out["H_inv_stab"] = (dT / (g("WSPM", -1) + 0.5)).astype("float32")
+    dpd1 = g("TEMP", -1) - g("DEWP", -1)
+    out["H_inv_dpd_delta"] = (dpd1 - (p["TEMP"] - p["DEWP"])).astype("float32")
+    # Haze forms as the dew point depression collapses with PM present.
+    out["H_inv_dpd_x_pm10"] = (pm1 / dpd1.clip(lower=0.1)).astype("float32")
+    return out
+
+
 _BUILDERS = {
     "raw": _tier_raw, "A": _tier_A, "B": _tier_B, "C0": _tier_C0,
-    "C": _tier_C, "D": _tier_D, "F": _tier_F,
+    "C": _tier_C, "D": _tier_D, "F": _tier_F, "G": _tier_G,
 }
 
 
@@ -278,13 +450,16 @@ def build_panel_features(impute: bool = True) -> pd.DataFrame:
 
     from . import data as D
     train, test = D.load_train(), D.load_test()
-    panel = _panel(train, test)
+    panel = raw_panel = _panel(train, test)
     if impute:
         panel = _impute(panel)
 
     out = {}
-    for tier in ["raw", "A", "B", "C0", "C", "D", "F"]:
+    for tier in ["raw", "A", "B", "C0", "C", "D", "F", "G"]:
         out.update(_BUILDERS[tier](panel))
+    # Tier H needs the pre-imputation panel as well, to tell a measured lead
+    # from a filled one -- so it does not go through _BUILDERS.
+    out.update(_tier_H(panel, raw_panel))
     if impute:
         out.update({c: panel[c] for c in panel.columns if c.startswith("E_wasnull_")})
 
@@ -355,6 +530,45 @@ FEATURE_SETS = {
         (c.split("_")[0] in {"raw", "C0", "D"}
          or c.startswith(("B_", "C_lag", "C_diff")))
         and "SO2" not in c
+    ),
+
+    # best_v1 + extended leads (tier G).
+    "best_v3_leadmax": lambda c: (
+        c.split("_")[0] in {"raw", "C0", "D", "G"}
+        or c.startswith(("B_", "C_lag", "C_diff"))
+    ),
+
+    # best_v1 + tier H (centred windows, observation flags, interactions,
+    # rain at the target hour, inversion proxy).
+    "best_v4_H": lambda c: (
+        c.split("_")[0] in {"raw", "C0", "D", "H"}
+        or c.startswith(("B_", "C_lag", "C_diff"))
+    ),
+    # H split in two so a win can be attributed rather than assumed.
+    "best_v4_Hcw": lambda c: (
+        c.split("_")[0] in {"raw", "C0", "D"}
+        or c.startswith(("B_", "C_lag", "C_diff", "H_cw"))
+    ),
+    "best_v4_Hrest": lambda c: (
+        c.split("_")[0] in {"raw", "C0", "D"}
+        or c.startswith(("B_", "C_lag", "C_diff",
+                         "H_obs", "H_ix", "H_rain", "H_inv"))
+    ),
+    # ONLY the observation-flag / un-imputed-lead family from tier H (~16
+    # columns). The V1 error breakdown showed the 0.84% of rows with a
+    # fabricated lead1_PM10 carry 16.6% of all squared error, so this family is
+    # aimed at a measured target; the rest of tier H is not. Tested alone
+    # because best_v4_H bundles 55 columns and lost.
+    "best_v4_Hobs": lambda c: (
+        c.split("_")[0] in {"raw", "C0", "D"}
+        or c.startswith(("B_", "C_lag", "C_diff",
+                         "H_obs", "H_rawlead", "H_rawnow"))
+    ),
+
+    # Everything: best_v1 + G + H.
+    "best_v5_GH": lambda c: (
+        c.split("_")[0] in {"raw", "C0", "D", "G", "H"}
+        or c.startswith(("B_", "C_lag", "C_diff"))
     ),
 
     # Leads only -- the single highest-value tier, kept as a reference point.

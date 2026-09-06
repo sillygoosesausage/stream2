@@ -1,0 +1,17 @@
+id,idea,variant,fold_B,delta_vs_incumbent,ci_lo,ci_hi,verdict,notes
+A2,MEMBERS mutation bug,ensemble.fit_member,,,,,FIXED,base_params bound by reference; pop(spike_weight) deleted the key from MEMBERS for the process. Cached tuned_wspike preds verified spike-weighted (differ from tuned_v1 by -0.55) so no past result corrupted.
+V9,paired seed comparison,src/paired.py,,,,,BUILT,Per-row paired squared-error difference on identical seeds with a day-block bootstrap. Even a -0.86 fold-B win has a 95% CI touching zero once days are resampled.
+A1,tier G extended leads,tuned_wspike_G (237 feat),16.7809,0.1816,-0.2754,0.7310,LOSES,Shortlist rank 1. Never previously scored. Point estimate worse; not separable.
+P4,prediction smoothing,centred 3h/5h w 0.1-0.5,,,,,LOSES,Helps fold A (-0.03 to -0.05) and hurts fold B (+0.08 to +1.59). Opposite signs.
+P8,spike stretch,q0.90/0.95 k0.02-0.10,,,,,LOSES,Helps fold B (-0.11 to -0.39) and hurts fold A (+0.13 to +1.97). Opposite signs.
+P2,multiplicative scale,x0.98 / x1.02 / x1.04,,,,,LOSES,x1.04 is -0.75 on B and +2.44 on A. Confirms the earlier bias-correction finding.
+P9,lower clip,clip lo=5.0,,,,,NEUTRAL,-0.0019 fold A / -0.0004 fold B. The only post-processing consistent on both folds and it is worth nothing.
+A5,C0_has_lead is dead,measurement,,,,,CONFIRMED,mean 0.99998 train / 0.99976 test - built post-imputation so near-constant. Pre-impute flag is 0.9926/0.9924.
+A6,lead imputation symmetry,measurement,,,,,PASS,Imputed-lead rate 0.74% train vs 0.76% test. Train and test are filled at the same rate.
+V1,error breakdown,tuned_wspike fold B OOF,,,,,KEY FINDING,430 rows (0.84%) with an imputed lead1_PM10 carry 16.6% of all squared error (RMSE 74.0 vs 15.2). Rising-fast hours carry 35.9% at bias -20.0. Top decile 62.4% at bias -19.2.
+F2,centred windows around t+1,tuned_wspike_Hcw (195 feat),16.6166,0.0173,-0.0751,0.1290,NEUTRAL,"The one feature family with no analogue in the codebase. Genuinely neutral, not harmful. Paired CI +/-0.10 - four times tighter than the independent-means noise floor of 0.4."
+A5+F4+F6+F11+F16,"obs flags, un-imputed leads, interactions, rain at t+1, inversion proxy",tuned_wspike_Hrest (192 feat),17.2001,0.6008,0.3104,0.9448,CONCLUSIVELY WORSE,Includes the un-imputed lead columns aimed at the 16.6%-of-error rows. Harmful as a block; the individual contribution is confounded.
+F2+rest,full tier H,tuned_wspike_H (225 feat),17.0928,0.4935,0.2537,0.7708,CONCLUSIVELY WORSE,First conclusive negative the paired test produced; would have read as noise under the old floor.
+P5/X7,CSV blending of submitted models,exp015 = exp004+exp006+exp002 equal thirds,16.5278,-0.0715,,,WINS ON LEADERBOARD,"LB 18.61153 vs exp004 18.78847 = -0.177. Components score 18.788 / 18.848 / 19.025 solo; the blend beats all three. Diversity, not component quality, is what pays."
+V7,does fold B rank BLENDS?,12 submitted models vs LB,,,,,NO - Spearman +0.21 p=0.51,"Decisive. The LB-best blend (exp015, 18.612) has one of the worst fold-B scores; the fold-B-best blend (exp008, 16.218) is fourth-worst on the LB. Local validation cannot select blend weights."
+LB noise,leaderboard variance,weight sweep 0.35/0.50/0.65,,,,,"SMALL, <~0.02",18.71327 / 18.69287 / 18.69516 across a smooth weight sweep implies LB noise well under the 0.09 gaps being acted on.

@@ -2,30 +2,63 @@
 
 ## SUBMIT THIS NEXT
 
-**`submissions/exp005_blend_A40_mf60.csv`** — blend of `best_v1` (0.40) and
-`tuned_mf` (0.60), 5 seeds each on all training data.
-Mean(A,B) **19.513**, projected LB **18.63** vs current best 18.788.
+**`submissions/exp006_bagged15.csv`** — feature-bagged ensemble, 15 bags at 60%
+feature subsets. Fold B **16.180** vs exp004's 16.599 (**-0.42**).
+At the ~25% observed transfer rate this projects to roughly **18.68**.
 
-    python -m src.submit best_v1:0.4 tuned_mf:0.6 --seeds 5 --exp-id exp005_blend_A40_mf60
+    python -m src.submit_bagged --bags 15 --frac 0.6 --exp-id exp006_bagged15
 
-## THE KEY FINDING: use mean(fold A, fold B), never fold B alone
+### Feature bagging is the one thing that worked
 
-Fold B alone is overfitted and its gains do not transfer. Fold A acts as the brake.
+Each model gets a different random 60% of the features (the top-8 by gain always
+kept). Individually the bags are slightly WORSE than a full-feature model;
+averaged they are much better, because their errors are far less correlated.
 
-| Metric | best_v1 -> tuned_wspike | Actual LB delta | Transfer |
+Controlled comparison, 8 models each, same config, fold B:
+
+| | RMSE |
+|---|---|
+| full features, 8 seeds | 16.490 |
+| **feature-bagged, 8 subsets** | **16.180** |
+
+Seed averaging on full features saturates by ~4 models (16.52 -> 16.49 over the
+last four); bagging keeps paying. The gain is the subsetting, not model count.
+
+Subset fraction: 0.35 -> 16.189, 0.50 -> 16.317, 0.60 -> 16.180. Non-monotonic
+(0.50 is draw noise at only 8 bags); 0.35 and 0.60 are equivalent. Pooling
+different fractions does NOT help (16.21, corr 0.9997).
+
+## VALIDATION: rank on fold B. Do NOT use fold A or the mean.
+
+Settled over four leaderboard points. Fold B **ranks perfectly** but
+**compresses magnitudes** -- expect roughly a quarter of a fold-B gain to reach
+the leaderboard.
+
+| Metric | Spearman vs LB | Ranks all 4 correctly? |
+|---|---|---|
+| **fold B** | **+1.000** | **yes** |
+| mean(A,B) | +0.800 | no |
+| fold A | -0.400 | no |
+
+Fold A is *anti*-correlated with the leaderboard. It trains on 155k rows
+against fold B's 258k and the final fit's 361k, so its difficulty is an
+artifact of data volume, not a second opinion about the test period. Chasing
+fold A actively misleads: exp005 was built to improve it and lost 0.19 on the
+leaderboard.
+
+**Do not fit a magnitude calibration to a handful of points.** A two-point fit
+looked accurate to +/-0.05 and then missed exp005 by 0.34. Use fold B to pick
+the better model; do not predict the score.
+
+| Submission | Fold B | LB | Note |
 |---|---|---|---|
-| Fold B | -0.902 | -0.237 | **26%** |
-| **Mean(A,B)** | -0.138 | -0.237 | ~100% |
+| exp001_baseline_raw | 32.960 | — | |
+| exp002_best_v1 | 17.502 | 19.025 | |
+| exp003_no_so2 | 17.748 | 19.641 | |
+| **exp004_tuned_wspike** | **16.599** | **18.788** | **best** |
+| exp005_blend_A40_mf60 | 16.749 | 18.977 | built for fold A; lost |
 
-**`LB ~= mean(A,B) - 0.88`, accurate to +/-0.05 on both known points:**
-
-| | Projected | Actual | Error |
-|---|---|---|---|
-| best_v1 | 18.977 | 19.025 | 0.048 |
-| tuned_wspike | 18.839 | 18.788 | 0.051 |
-
-**You can now evaluate ideas without spending submissions.** Always report
-mean(A,B) and the projection; never decide on fold B alone.
+    python -m src.tracker add <exp_id> --lb <score>
 
 ## Member scoreboard (seed-averaged: fold B k=5, fold A k=3)
 

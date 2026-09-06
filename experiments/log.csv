@@ -4,3 +4,16 @@ exp001_baseline_raw,2026-09-06T01:02:41,uncommitted,"LightGBM on raw measurement
 exp002_best_v1,2026-09-06T02:25:50,f5aec24,"raw+C0+D+B+C(lag,diff), D7 imputation, LightGBM",best_v1,lightgbm,"{""learning_rate"": 0.05, ""num_leaves"": 127}",22.6175,17.5353,20.0764,,0.97,no,First scoreable submission of the lead-feature model. Baseline was 32.96.
 exp003_best_v2_no_so2,2026-09-06T02:28:28,f5aec24,"best_v1 minus SO2 features - drift-hardened, 155 features",best_v2_no_so2,lightgbm,"{""learning_rate"": 0.05, ""num_leaves"": 127}",22.8127,17.7482,20.2804,,0.38,no,Paired with exp002 to measure directly whether dropping SO2 helps on the real test year.
 exp004_tuned_wspike,2026-09-06,,"tuned + spike weighting, 5-seed avg",best_v1,lightgbm,,,16.599,,,,yes,Phase 9 winner
+exp005_blend_A40_mf60,2026-09-06,,blend best_v1 0.4 + tuned_mf 0.6,best_v1,lightgbm,,22.276,16.749,19.513,,,yes,
+exp006_bagged15,2026-09-06,,"feature-bagged ensemble, 15 bags @ 60% subsets",best_v1,lightgbm,,,16.18,,,,yes,Phase 9b
+exp007_blend46,2026-09-06,,exp004:0.5 + exp006:0.5,n/a (CSV blend),blend of submitted CSVs,,,16.2689,,18.69287,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp008_blend3565,2026-09-06,,exp004:0.35 + exp006:0.65,n/a (CSV blend),blend of submitted CSVs,,,16.2183,,18.71327,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp009_blend6535,2026-09-06,,exp004:0.65 + exp006:0.35,n/a (CSV blend),blend of submitted CSVs,,,16.3422,,18.69516,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp010_blend3way,2026-09-06,,exp004+exp006+exp005 equal,n/a (CSV blend),blend of submitted CSVs,,,16.3774,,18.74589,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp011_blend4way,2026-09-06,,exp004+exp006+exp005+exp002 equal,n/a (CSV blend),blend of submitted CSVs,,,16.5687,,18.68357,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp015_b462,2026-09-06,,exp004+exp006+exp002 equal thirds,n/a (CSV blend),blend of submitted CSVs,,,16.5278,,18.61153,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp016_b4623,2026-09-06,,exp004+exp006+exp002+exp003 equal,n/a (CSV blend),blend of submitted CSVs,,,,,18.70816,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp017_b22_1,2026-09-06,,exp004:2+exp006:2+exp002:1,n/a (CSV blend),blend of submitted CSVs,,,16.405,,18.6209,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp018_b5way,2026-09-06,,5-way equal incl exp003,n/a (CSV blend),blend of submitted CSVs,,,,,18.74176,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp019_b221,2026-09-06,,exp004:2+exp006:2+exp002:2+exp005:1,n/a (CSV blend),blend of submitted CSVs,,,16.55,,18.6511,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).
+exp020_rank4way,2026-09-06,,rank-average of exp004/006/005/002,n/a (CSV blend),blend of submitted CSVs,,,,,18.67002,0.02,yes,Phase 14 CSV blending. fold_B is the reconstructed analogue (exp006 proxied by bag_frac35).

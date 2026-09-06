@@ -91,6 +91,27 @@ class LightGBMModel(Model):
             y = np.log1p(y)
             y_val = np.log1p(y_val) if y_val is not None else None
 
+        # sqrt sits between raw (pure RMSE) and log (relative error). It
+        # compresses the tail less aggressively than log, which lost badly.
+        self.sqrt_target_ = bool(params.pop("sqrt_target", False))
+        if self.sqrt_target_:
+            y = np.sqrt(y)
+            y_val = np.sqrt(y_val) if y_val is not None else None
+
+        # Predict PM2.5/PM10 at the target hour instead of the level. PM10 at
+        # t+1 is observed (it carries ~50% of model gain), so dividing it out
+        # leaves a bounded, physically stable ratio to learn and multiplies the
+        # known quantity back at predict time.
+        self.ratio_col_ = params.pop("ratio_target_col", None)
+        if self.ratio_col_:
+            self.ratio_clip_ = params.pop("ratio_clip", 3.0)
+            den = X[self.ratio_col_].to_numpy()
+            y = np.clip(y.to_numpy() / np.maximum(den, 1.0), 0, self.ratio_clip_)
+            if y_val is not None:
+                dv = X_val[self.ratio_col_].to_numpy()
+                y_val = np.clip(y_val.to_numpy() / np.maximum(dv, 1.0),
+                                0, self.ratio_clip_)
+
         dtrain = lgb.Dataset(X, y, weight=sample_weight)
         callbacks = [lgb.log_evaluation(0)]
         valid_sets = []
@@ -107,7 +128,13 @@ class LightGBMModel(Model):
 
     def _predict(self, X):
         p = self.booster_.predict(X, num_iteration=self.best_iteration_)
-        return np.expm1(p) if getattr(self, "log_target_", False) else p
+        if getattr(self, "log_target_", False):
+            return np.expm1(p)
+        if getattr(self, "sqrt_target_", False):
+            return np.square(np.maximum(p, 0))
+        if getattr(self, "ratio_col_", None):
+            return p * np.maximum(X[self.ratio_col_].to_numpy(), 1.0)
+        return p
 
     def feature_importance(self) -> pd.Series:
         return pd.Series(
