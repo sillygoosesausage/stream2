@@ -3,7 +3,10 @@
 Inter-Uni Datathon, Stream 2. Predict `PM2_5_next_hour` for 51,063 held-out
 station-hours. Metric: **RMSE**.
 
-Full method and roadmap: **[PLAN.md](PLAN.md)**.
+**Final submission, model card, reproduction and disclosure:
+[FINAL_SUBMISSION.md](FINAL_SUBMISSION.md)**
+**Methodology and every negative result: [reports/experiment_record.md](reports/experiment_record.md)**
+Roadmap and design history: [PLAN.md](PLAN.md) · current state: [RESUME.md](RESUME.md)
 
 ---
 
@@ -11,10 +14,40 @@ Full method and roadmap: **[PLAN.md](PLAN.md)**.
 
 ```bash
 pip install -r requirements.txt
-
-python -m src.train   --config experiments/configs/baseline.yaml   # validate
-python -m src.predict --config experiments/configs/baseline.yaml   # submit
 ```
+
+Reproduce the submitted prediction file (see FINAL_SUBMISSION.md §3 for the
+full recipe and timings):
+
+```bash
+python -m src.submit tuned_wspike      --seeds 5 --exp-id exp004_tuned_wspike
+python -m src.submit_bagged --bags 15 --frac 0.6 --exp-id exp006_bagged15
+python -m src.submit best_v1           --seeds 1 --exp-id exp002_best_v1
+python -m src.submit tuned_wspike_G    --seeds 5 --exp-id exp012_tierG
+python -m src.submit tuned_wspike_Hcw  --seeds 5 --exp-id exp013_tierHcw
+
+python -m src.blend_csv     exp004_tuned_wspike:1 exp006_bagged15:1 exp002_best_v1:1     exp012_tierG:1 exp013_tierHcw:1 --out exp022_b5_GHcw
+```
+
+Explore and validate:
+
+```bash
+python -m src.train   --config experiments/configs/baseline.yaml   # validate
+python -m src.predict --config experiments/configs/baseline.yaml   # single-model submit
+python -m src.ensemble fit <member> --seeds 5 --fold B             # cache fold preds
+python -m src.paired <candidate> tuned_wspike --fold B             # PAIRED comparison
+python -m src.postproc tuned_wspike                                # post-processing sweep
+python -m src.tracker show                                         # local vs leaderboard
+```
+
+### Two things to know before changing anything
+
+1. **Use `src/paired.py`, not a difference of RMSEs.** Comparing two
+   independent means gives a noise floor of ~0.4 RMSE on fold B. Paired per-row
+   differencing on identical seeds gives ±0.10 on correlated models.
+2. **Fold B cannot rank blends** (Spearman +0.21, p = 0.51 over twelve
+   submitted models). It ranks single models acceptably and ensembles not at
+   all. Use equal weights, or spend a leaderboard submission.
 
 `train.py` prints per-fold RMSE with per-month / per-station / per-decile
 breakdowns and appends a row to `experiments/log.csv`.

@@ -1,184 +1,161 @@
-# Resume here — state as of 2026-09-06 (validation recalibrated)
+# Resume here — state as of 2026-09-06, 16:10
 
-## SUBMIT THIS NEXT
+## Standing entry
 
-**`submissions/exp006_bagged15.csv`** — feature-bagged ensemble, 15 bags at 60%
-feature subsets. Fold B **16.180** vs exp004's 16.599 (**-0.42**).
-At the ~25% observed transfer rate this projects to roughly **18.68**.
+**`submissions/exp022_b5_GHcw.csv` — leaderboard 18.54180. Currently 2nd place.**
 
-    python -m src.submit_bagged --bags 15 --frac 0.6 --exp-id exp006_bagged15
+Equal fifths of `exp004_tuned_wspike` + `exp006_bagged15` + `exp002_best_v1`
++ `exp012_tierG` + `exp013_tierHcw`. No fitted weights.
 
-### Feature bagging is the one thing that worked
+    python -m src.blend_csv exp004_tuned_wspike:1 exp006_bagged15:1 \n        exp002_best_v1:1 exp012_tierG:1 exp013_tierHcw:1 --out exp022_b5_GHcw
 
-Each model gets a different random 60% of the features (the top-8 by gain always
-kept). Individually the bags are slightly WORSE than a full-feature model;
-averaged they are much better, because their errors are far less correlated.
-
-Controlled comparison, 8 models each, same config, fold B:
-
-| | RMSE |
-|---|---|
-| full features, 8 seeds | 16.490 |
-| **feature-bagged, 8 subsets** | **16.180** |
-
-Seed averaging on full features saturates by ~4 models (16.52 -> 16.49 over the
-last four); bagging keeps paying. The gain is the subsetting, not model count.
-
-Subset fraction: 0.35 -> 16.189, 0.50 -> 16.317, 0.60 -> 16.180. Non-monotonic
-(0.50 is draw noise at only 8 bags); 0.35 and 0.60 are equivalent. Pooling
-different fractions does NOT help (16.21, corr 0.9997).
-
-## VALIDATION: rank on fold B. Do NOT use fold A or the mean.
-
-Settled over four leaderboard points. Fold B **ranks perfectly** but
-**compresses magnitudes** -- expect roughly a quarter of a fold-B gain to reach
-the leaderboard.
-
-| Metric | Spearman vs LB | Ranks all 4 correctly? |
+| # | Team | Score |
 |---|---|---|
-| **fold B** | **+1.000** | **yes** |
-| mean(A,B) | +0.800 | no |
-| fold A | -0.400 | no |
+| 1 | Tavieh | 18.21598 |
+| **2** | **tennis net sitters** | **18.54180** |
+| 3 | Victoria Team | 18.69571 |
 
-Fold A is *anti*-correlated with the leaderboard. It trains on 155k rows
-against fold B's 258k and the final fit's 361k, so its difficulty is an
-artifact of data volume, not a second opinion about the test period. Chasing
-fold A actively misleads: exp005 was built to improve it and lost 0.19 on the
-leaderboard.
+Gap to first: **0.326**. Started the session 3rd at 18.78847 — **−0.247**.
 
-**Do not fit a magnitude calibration to a handful of points.** A two-point fit
-looked accurate to +/-0.05 and then missed exp005 by 0.34. Use fold B to pick
-the better model; do not predict the score.
+Full model card, reproduction and disclosure: **[FINAL_SUBMISSION.md](FINAL_SUBMISSION.md)**.
 
-| Submission | Fold B | LB | Note |
+---
+
+## READ THIS BEFORE SPENDING A SUBMISSION
+
+**Fold B cannot be trusted on any blending question.** Not composition
+(Spearman −0.564, p=0.090 over ten blends — actively anti-correlated), and not
+nesting either. Mid-session I thought nesting was safe because fold B ranked
+three nested blends correctly; I used that to pick `tuned_mf` as the best of
+eleven possible pool additions (fold B said −0.024) and it **lost 0.097** on the
+leaderboard (exp024). The rule was induced from n=3 and died on its first real
+test. Full account: `reports/experiment_record.md` §9.8.
+
+There is no cheap local substitute. Every blend decision that transferred was
+either confirmed by a submission or was an unfitted equal-weight construction.
+
+---
+
+## The one thing that worked today
+
+**Blending submitted CSVs.** Not a better model — an average of three existing
+ones. Components score 18.788 / 18.848 / 19.025 standalone; the equal-weight
+blend scores 18.612, beating all of them.
+
+Diversity is what pays, not component quality. `best_v1` is the *worst*
+component and wants a full third of the weight. Adding `exp003` (no-SO2) or
+`exp005` *hurts* — the first is a degraded model, the second is already a blend
+and adds no new direction.
+
+Two models that LOST on fold B (`tierG` +0.18, `tierHcw` +0.017) both improved
+the blend. But the ordering of pool candidates tracks **solo quality**, not
+decorrelation: the three most decorrelated members available (`lgb_log` 0.896,
+`extra_trees` 0.935, `xgb_v1` 0.949) are the three worst additions. A member
+must be decorrelated **and** within ~10% of the incumbent's quality.
+
+---
+
+## Kaggle CLI is wired up
+
+    kaggle competitions submissions -c inter-uni-datathon-stream-2-beijing-multi-site-air-quality -v
+    kaggle competitions leaderboard  -c inter-uni-datathon-stream-2-beijing-multi-site-air-quality -s
+    kaggle competitions submit -c inter-uni-datathon-stream-2-beijing-multi-site-air-quality -f submissions/X.csv -m "msg"
+
+**60 submissions remaining today** (14 used this session). Budget them: the public/private split is
+unseen, and weight-tuning against the public half is a real overfitting risk.
+LB noise is small (< ~0.02), so 0.09 differences are signal and 0.01 are not.
+
+---
+
+## What was tested today and lost
+
+| Idea | Fold B Δ | 95% CI | Verdict |
 |---|---|---|---|
-| exp001_baseline_raw | 32.960 | — | |
-| exp002_best_v1 | 17.502 | 19.025 | |
-| exp003_no_so2 | 17.748 | 19.641 | |
-| **exp004_tuned_wspike** | **16.599** | **18.788** | **best** |
-| exp005_blend_A40_mf60 | 16.749 | 18.977 | built for fold A; lost |
+| Tier G — extended leads (237 feat) | +0.18 | [−0.28, +0.73] | loses |
+| Tier H `cw` — centred windows (195 feat) | +0.017 | [−0.075, +0.129] | neutral |
+| Tier H `rest` — obs flags, interactions, rain, inversion | +0.60 | [+0.31, +0.94] | **worse** |
+| Tier H full (225 feat) | +0.49 | [+0.25, +0.77] | **worse** |
+| Smoothing / stretch / rescale (all variants) | — | — | fold-specific, opposite signs on A and B |
 
-    python -m src.tracker add <exp_id> --lb <score>
+Tier G was the top item on the improvement backlog and had never been scored on
+any fold. It loses. **Every feature family tried today failed.** The model is
+information-saturated: PM10 at t+1 plus PM10 now is the whole problem.
 
-## Member scoreboard (seed-averaged: fold B k=5, fold A k=3)
+---
 
-| Member | Fold A | Fold B | Mean | Proj LB |
+## New tooling worth keeping
+
+- **`src/paired.py`** — paired per-row squared-error comparison on identical
+  seeds, day-block bootstrap. CI of **±0.10** on correlated models against the
+  old ±0.4 independent-means floor. Use this for every future comparison.
+- **`src/postproc.py`** — post-processing sweeps on cached OOF, no fits.
+- **`src/blend_csv.py`** — value or rank blending of submission CSVs.
+- **Fixed:** `ensemble.fit_member` mutated `MEMBERS` via
+  `base_params.pop("spike_weight")`. Audited — no past result was corrupted.
+
+---
+
+## The largest unexploited finding
+
+From the fold-B error breakdown (`reports/experiment_record.md` §8.4):
+
+| Slice | n | Bias | RMSE | Share of squared error |
 |---|---|---|---|---|
-| **blend best_v1:0.4 + tuned_mf:0.6** | 22.276 | 16.749 | **19.513** | **18.63** |
-| tuned_mf | 22.815 | 16.509 | 19.662 | 18.78 |
-| tuned_wspike | 22.839 | 16.599 | 19.719 | 18.84 |
-| best_v1 | **22.212** | 17.502 | 19.857 | 18.98 |
-| tuned_v1 | 22.658 | 17.149 | 19.903 | 19.02 |
-| lgb_wspike | 22.725 | 17.103 | 19.914 | 19.03 |
+| **`lead1_PM10` imputed** | **430** | −4.08 | **73.96** | **16.6%** |
+| rising fast | 3,150 | **−20.01** | 40.14 | 35.9% |
+| top decile | 5,125 | −19.23 | 41.51 | 62.4% |
 
-`best_v1` is BEST on fold A; the tuned configs win fold B. They fail in
-different places, and that cross-fold disagreement is the only diversity that
-has paid. Same-fold diversity (XGBoost, log-target) all correlated >0.996 and
-blended to nothing.
+**0.84% of rows carry 16.6% of all squared error** — the ones where D7
+imputation fabricated the dominant feature and handed it over looking like a
+real reading. Halving their error would be worth roughly −1.0 on fold B.
 
-## Leaderboard history
+Attacked directly and **it backfired.** `tuned_wspike_Hobs` gives the model the
+un-imputed lead (NaN preserved) plus honest observation flags, in isolation.
+Those 430 rows got **worse**: 73.96 -> 76.42 RMSE, while the other 50,919 rows
+were untouched (15.2208 -> 15.2229).
 
-| Submission | Fold B | Mean(A,B) | Leaderboard |
-|---|---|---|---|
-| exp001_baseline_raw | 32.960 | — | — |
-| exp002_best_v1 | 17.535 | 19.857 | 19.025 |
-| exp003_best_v2_no_so2 | 17.748 | — | 19.641 |
-| exp004_tuned_wspike | 16.599 | 19.719 | **18.788** |
-| **exp005_blend_A40_mf60** | 16.749 | 19.513 | *pending* |
-
-    python -m src.tracker add exp005_blend_A40_mf60 --lb <score>
-
-## What is exhausted
-
-- **Hyperparameter tuning.** Two 30-trial searches. The second, on mean(A,B),
-  beat the first by 0.006 projected. Fold A sits at 22.8-23.2 across every
-  trial regardless of configuration -- hyperparameters cannot move it.
-- **Model diversity within a fold.** XGBoost corr 0.9988, blend weight 0.00.
-  Log-target lost outright (21.095) and still correlated 0.9962.
-- **Two-stage prediction feedback** (`src/stage2.py`): -0.127, inside noise.
-
-## Where the remaining upside is
-
-1. **Re-check the Phase 5 feature decisions on mean(A,B).** Every tier call was
-   made on fold B alone, so some are likely wrong in the same way the tuning
-   was. Cheapest real lever: cached panel, `validate.compare(..., folds=['A','B'],
-   seeds=3)`. Especially re-test what was rejected as noise.
-2. **More folds.** Two windows is thin, and fold A is the only thing holding
-   fold B honest. A rolling-origin scheme with 4-5 Sep-Feb windows would cut
-   decision variance further.
-3. **Why is fold A stuck at ~22.2?** It has 155k training rows vs fold B's
-   258k. If the gap is data volume, nothing fixes it; if it is something about
-   the 2014-15 winter, that is worth knowing.
-4. **Per-station / per-month bias correction** (PLAN Phase 10 Task 10.2), now
-   measurable offline thanks to the calibration.
-
-## Cached artifacts (do not rebuild)
-
-| File | What |
-|---|---|
-| `data/processed/stage1_oof.parquet` | Expanding-window OOF stage-1 predictions, 309,029 rows (~72s to rebuild) |
-| `data/processed/stage1_test.parquet` | Stage-1 predictions for the test set, 51,063 rows |
-| `data/processed/oof/*.parquet` | Per-experiment OOF predictions |
-| `data/processed/preds/*__fold{A,B}.parquet` | Per-seed validation predictions, 10 members. All blending/averaging is arithmetic on these |
-| `experiments/tuning_best_multifold.json` | Optuna result on mean(A,B) |
-| `submissions/*.csv` | Five generated submissions |
-| `experiments/log.csv` | Experiment log |
-| `experiments/leaderboard_tracker.csv` | Local vs leaderboard, 3 entries |
-| `experiments/phase5_*.csv` | Feature-tier comparison tables |
-
-The feature panel itself is cached **in-process only** (~5s to build). Adding a
-disk cache for it is a small, worthwhile task.
+The D7 city-median fill is a *better* input than an honest NaN. Those rows are
+hard because the sensor was down, and no test-time covariate recovers what was
+never measured. Same wall as the stage-2 result. **Right diagnosis, wrong
+treatment — and the concentration of error appears to be irreducible.**
 
 ---
 
-## Settled decisions
+## Deliverables status
 
-| ID | Outcome | Evidence |
+| # | Required material | Status |
 |---|---|---|
-| D1 | Scripts, not notebooks | — |
-| D2 | **User does all git operations** | Never run git/gh commands |
-| D3 | All training data, uniform weights | Every restriction lost; last-1-year +3.77 |
-| D7 | Interpolate ≤6h → cross-station fill → NaN | Worth ~3.1 RMSE (32.96 → 29.88) |
-| D16 | **KEEP SO2** | Dropping it cost +0.62 on the leaderboard despite a local tie |
+| 1 | Methodology report | ✅ `reports/experiment_record.md` (735 lines, Parts I + II) |
+| 2 | Complete source code | ✅ `src/` |
+| 3 | Final prediction file | ✅ `submissions/exp022_b5_GHcw.csv` |
+| 4 | Processed datasets | ✅ regenerable — `FINAL_SUBMISSION.md` §4 |
+| 5 | README / reproduction | ✅ `FINAL_SUBMISSION.md` §3 |
+| 6 | Final model information | ✅ `FINAL_SUBMISSION.md` §2 |
+| — | Required disclosure | ✅ `FINAL_SUBMISSION.md` §5 |
 
 ---
 
-## Key findings
+## Settled decisions (unchanged)
 
-1. **Fact 4 — lead features.** For a row at *t* the target is PM2.5 at *t+1*,
-   and the *t+1* row is in the test file with observed covariates (99.25% of
-   rows). The task is a nowcast, not a forecast. Worth **−9.15 RMSE**.
-2. **Fact 1 — the trap.** PM2.5 history is reconstructable in train (previous
-   row's target) but absent from test. `leakage_guard` and
-   `assert_test_computable` enforce this on every fit.
-3. **Calendar features are toxic** (+4.52), isolated to `A_doy` (+3.74) and
-   `A_month` (+1.94) — memorisation of which specific days were dirty.
-4. **Seed noise is large.** Fold B sd 0.263, range 0.882 on a single seed.
-   Deltas under ~0.5 are undecidable; use `compare(..., seeds=4)`.
-5. **Two-stage prediction feedback failed** (−0.127, inside noise). The ceiling
-   probe promised −3.18 but used *Gaussian* noise; real stage-1 error is a
-   function of the same features, so the estimate re-encodes information the
-   model already has. Keep as a documented negative result — `src/stage2.py`
-   and its caches remain.
-
----
+| ID | Outcome |
+|---|---|
+| D1 | Scripts, not notebooks |
+| D2 | **User does all git operations** — never run git/gh |
+| D3 | All training data, uniform weights |
+| D7 | Interpolate ≤6h → cross-station fill → NaN (~−3.1 RMSE) |
+| D16 | **KEEP SO2** — dropping it cost +0.62 on the leaderboard |
 
 ## Working preferences
 
 - User does all git commits. Recommend commit points; never run git.
+- Warn before any run over ~5 min, with an ETA. Background it, `python -u`.
 - Cheap decisions with few options: build all, score them, report the winner.
-  Ask only when expensive or when validation cannot separate them.
-- Warn before any run over ~5 min, with an ETA. Background it, print progress
-  with `python -u`, cache intermediate results.
-- Smoke-test on a small slice before a long run.
-
----
 
 ## Suggested commit
 
-    Validation recalibrated: mean(A,B) predicts LB to +/-0.05; fold B alone
-    transfers only 26%. Blend best_v1+tuned_mf projected 18.63.
-
-Untracked/changed: `src/{ensemble,tune,stage2,eda}.py`, `RESUME.md`,
-`reports/phase2_findings.md`, `experiments/`, `submissions/`, updated
-`PLAN.md` / `README.md` / `src/{features,models,validate,config,train,predict}.py`.
+    Blending beats modelling: 5-member equal-weight CSV blend scores 18.54180
+    (from 18.78847), 2nd place. Every feature family tried lost; the whole
+    -0.247 came from ensembling. Fold B is anti-correlated with the LB on
+    blends (Spearman -0.564) and its nested-addition rule also failed (exp024,
+    +0.097). Adds src/paired.py (paired testing, CI +/-0.10), src/postproc.py,
+    src/blend_csv.py; fixes the MEMBERS mutation bug in ensemble.py.

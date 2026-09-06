@@ -6,3 +6,7 @@ venv/
 .ipynb_checkpoints/
 .idea/
 .vscode/
+
+# raw competition data is tracked in data/raw/ only
+data/new-raw/
+data/raw_original_backup/

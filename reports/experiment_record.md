@@ -516,3 +516,220 @@ The generalisable lesson is not "blend more." It is that **a validation scheme
 should be audited for what class of improvement it can see.** Fold B was
 consumed by roughly 25 feature decisions and it served those adequately; it was
 then used, implicitly, to rule on ensembling, which it cannot measure at all.
+
+### 8.5 The imputed-lead rows: right diagnosis, wrong treatment
+
+§8.4 identified 430 rows (0.84%) carrying 16.6% of all squared error — those
+whose `lead1_PM10` was fabricated by D7 rather than measured. `best_v4_Hobs`
+tests the obvious fix in isolation: ~16 columns giving the model the *un-imputed*
+lead with NaN preserved, plus honest pre-imputation observation flags, so
+LightGBM can route those rows down their own branch.
+
+| Slice | n | incumbent RMSE | with `Hobs` | Δ |
+|---|---|---|---|---|
+| `lead1_PM10` **imputed** | 430 | 73.96 | **76.42** | **+2.46** |
+| `lead1_PM10` observed | 50,919 | 15.2208 | 15.2229 | +0.002 |
+| overall | 51,349 | 16.5993 | 16.6944 | +0.095 |
+
+Paired delta +0.095, 95% CI [−0.036, +0.305].
+
+The intervention made *precisely the rows it targeted* worse, and left
+everything else alone. The D7 fill — city median for the hour, scaled by the
+station's long-run ratio — is therefore a **better** input than an honest
+missing value: telling the model "this number is fabricated" causes it to
+discard a usable estimate.
+
+These rows are not hard because the imputation is poor. They are hard because
+the station's sensor was down for the hour being predicted, and nothing
+available at test time recovers what was never measured. This is the same wall
+as the two-stage result in Part I: an estimate reconstructed from the existing
+covariates re-encodes information the model already has.
+
+The 16.6% concentration of error is real, and it is not addressable.
+
+### 9.5 Locally-rejected models improve the blend
+
+The models rejected in §8.2 were fitted on the full training set anyway and
+added to the pool, on the reasoning that blending rewards decorrelation rather
+than accuracy. Error correlations against the incumbent, measured on fold B:
+tier G 0.974, tier Hcw 0.991.
+
+| Submission | Composition | LB |
+|---|---|---|
+| exp015 | exp004 + exp006 + exp002 | 18.61153 |
+| exp021 | + exp012 (tier G) | **18.55322** |
+| exp022 | + exp013 (tier Hcw) | **18.54180** |
+
+Tier G is worth **−0.058** in the blend while being +0.18 *worse* standalone on
+fold B. Tier Hcw adds a further −0.011, which is inside the estimated
+leaderboard noise of ~0.02 and should be read as "not worse" rather than as a
+gain.
+
+This is the third independent confirmation of the §9.2 pattern, and the
+strongest, because these two models were rejected on measured local evidence
+before being tried in the pool. Cumulative movement from the single best model:
+
+    exp004  18.78847  ->  exp022  18.54180        -0.247
+
+The practical rule this suggests: **a model that loses on local validation but
+is decorrelated from the incumbent should be fitted and kept, not discarded.**
+The selection criterion for a pool member is not its own score.
+
+A caveat on all of §9. These are public-leaderboard measurements with the
+private split unseen, and the pool was assembled by submitting. The equal-weight
+construction limits the exposure — there are no fitted parameters anywhere in
+the blend — but the *membership* of the pool was chosen with leaderboard
+feedback, and that is a form of selection that the public score cannot itself
+validate.
+
+## 11. The dataset correction of 2026-09-06
+
+Mid-competition the organisers published a corrected dataset, announcing:
+
+> Because the test rows are consecutive hourly observations, the
+> `current_PM2_5` value in the following row could reveal the previous row's
+> target, `PM2_5_next_hour`. To address this, we added a corrected dataset with
+> the `current_PM2_5` column removed from both `train.csv` and `test.csv`.
+
+The corrected files were verified byte-identical to the files this project had
+been using throughout:
+
+| File | MD5 |
+|---|---|
+| `data/raw/train.csv` / corrected `train.csv` | `31062b0e8bd99448375d72671bf950bb` |
+| `data/raw/test.csv` / corrected `test(1).csv` | `e4cdef2dfaf808b2da9aee5bc5d83e8c` |
+| `data/raw/sample_submission.csv` / corrected | `ca98dae9f962e0f597c77e2be21d9047` |
+
+No refitting was required and no result in this record is affected.
+
+This resolves the discrepancy that opened §2.1. The competition overview stated
+that each row carried a "Current PM2.5 concentration" and the files contained no
+such column; the overview was describing the *original* release, and this
+project worked from the corrected files from the start. The `leakage_guard` and
+`assert_test_computable` machinery in `src/data.py` was therefore built to
+enforce, by inference from the data, precisely the constraint the organisers
+subsequently made explicit.
+
+Had the uncorrected files been used, `current_PM2_5` at row *t+1* would have
+been exactly row *t*'s target — a complete leak. Nothing on the leaderboard
+suggests it was exploited: the leading score is 18.22, where a leak would give
+approximately zero.
+
+### 9.6 Refinement: fold B is anti-correlated on composition, reliable on nesting
+
+Extending §9.3 to fourteen submitted points, and separating the two kinds of
+comparison:
+
+| Set | n | Spearman(fold B, LB) | p |
+|---|---|---|---|
+| All submitted models and blends | 14 | +0.143 | 0.63 |
+| **Blends only** | 10 | **−0.564** | 0.090 |
+| Nested chain exp015 → exp021 → exp022 | 3 | **+1.000** (exact) | — |
+
+Fold B is not merely uninformative about blends — across different
+*compositions* it is **negatively** correlated, which is worse than useless. But
+within a **nested** chain, where each step adds one member to the previous pool,
+it ranked all three correctly:
+
+| Blend | Fold B | LB |
+|---|---|---|
+| exp015 (3 members) | 16.5278 | 18.61153 |
+| exp021 (+ tier G) | 16.5098 | 18.55322 |
+| exp022 (+ tier Hcw) | 16.5039 | 18.54180 |
+
+The distinction is mechanical. Adding a member to a fixed pool reduces variance
+monotonically, and that shows up on any evaluation set including a fixed one.
+Reweighting *between* compositions trades one model's bias against another's,
+and fold B — a single Sep–Feb window already consumed by ~25 decisions — reads
+those bias trades as its own idiosyncratic noise.
+
+The usable rule: **fold B can answer "does adding this member help?" It cannot
+answer "which mix is best?"** The first question is cheap and local; the second
+costs a submission.
+
+### 9.7 Decorrelation is necessary but not sufficient
+
+§9.5 concluded that a locally-worse but decorrelated model should be kept. That
+is true only within a range, and the boundary is measurable. Using the
+nested-addition test of §9.6 — the one question fold B answers reliably — every
+cached member was screened as a sixth addition to the exp022 pool:
+
+| Added member | Solo fold B | Error corr vs pool | Δ pool |
+|---|---|---|---|
+| **tuned_mf** | **16.509** | 0.989 | **−0.024** |
+| tuned_wspike2 | 16.601 | 0.991 | −0.006 |
+| tuned_wspike_Hobs | 16.694 | 0.991 | +0.010 |
+| lgb_wspike2 | 17.005 | 0.972 | +0.015 |
+| tuned_wspike_H | 17.093 | 0.971 | +0.029 |
+| tuned_wspike_Hrest | 17.200 | 0.972 | +0.051 |
+| tuned_v1 | 17.149 | 0.982 | +0.064 |
+| lgb_huber | 17.580 | 0.961 | +0.082 |
+| tuned_wspike_xt (`extra_trees`) | 18.736 | **0.935** | +0.208 |
+| xgb_v1 | 18.686 | 0.949 | +0.235 |
+| lgb_log | 21.095 | **0.896** | +0.465 |
+
+The ordering is essentially by **solo quality**, not by decorrelation. The three
+*most* decorrelated members available — log-target at 0.896, `extra_trees` at
+0.935, XGBoost at 0.949 — are the three *worst* additions, and by a wide margin.
+
+The correct statement is therefore narrower than §9.5's. A pool member must be
+decorrelated **and** competitive. `best_v1` earns a third of the weight at 17.50
+solo (0.95 of the incumbent's quality); `extra_trees` at 18.74 does not, because
+at equal weights a member contributes its own bias in proportion to its share,
+and beyond roughly a 10% quality gap that bias exceeds the variance it cancels.
+
+`extra_trees` (`M6`) is thus a negative result twice over: worse standalone by
++2.14, and harmful in the blend. The same holds for XGBoost, which had already
+been rejected on correlation grounds in Part I and is now rejected on pool
+grounds as well.
+
+The one clear addition is `tuned_mf` — Optuna-tuned against mean(A,B) with the
+spike weight searched — which is the only cached member that beats the incumbent
+standalone. It has never been submitted alone. It appeared inside exp005, but
+that blend also carried `best_v1` at 0.4, double-counting a model already in the
+pool, which is why exp005 lost.
+
+### 9.8 The nested-addition rule fails its first out-of-sample test
+
+§9.6 proposed that fold B, useless for ranking blend *compositions*, is reliable
+for the narrower question "does adding this member to the pool help?" — on the
+evidence of a nested chain of three (exp015 → exp021 → exp022) that it ranked
+exactly right. §9.7 then used that rule to screen eleven cached members and
+select `tuned_mf`, which scored the best nested-addition delta of the lot at
+−0.024 on fold B.
+
+It was submitted as exp024, an equal-sixths pool of exp022's five members plus
+`tuned_mf`.
+
+| Submission | Members | Fold B nested test | LB |
+|---|---|---|---|
+| exp022 | 5 | — | **18.54180** |
+| exp024 | 6 (+ `tuned_mf`) | **−0.024 (best of 11)** | 18.63881 |
+
+**The leaderboard says +0.097.** The rule was wrong, and it was wrong on the
+first genuine out-of-sample test it was given.
+
+This is a methodological failure worth stating plainly, because it is the same
+failure the project has now made three times in different clothes. A pattern was
+observed over three points (§9.6), promoted to a rule, and used to spend a
+submission. Three nested observations cannot support that generalisation, and
+the caveat that ended §9.3 — "do not fit a magnitude calibration to a handful of
+points" — applied here and was not heeded.
+
+A hypothesis for the mechanism, offered as such and not as a finding: under
+equal weights, adding a member is not additive but *dilutive*. Going from five
+members to six drops every incumbent's share from 0.200 to 0.167. `best_v1` is
+the only structurally distinct model in the pool — untuned, weakest standalone,
+and by §9.2 the most valuable per unit of weight — while `tuned_mf` is a fourth
+tuned-LightGBM variant on the same feature set. Losing `best_v1` weight
+plausibly cost more than `tuned_mf` contributed. Fold B computed the reweighting
+correctly and still mispredicted its effect, which is consistent with §9.6's own
+explanation: fold B reads bias trades between members as its own noise.
+
+**The standing conclusion of §9.6 is therefore withdrawn.** The defensible
+version is narrower still: fold B cannot be trusted on any blending question.
+Every blend decision in this project that transferred was either confirmed by a
+submission or was an unfitted equal-weight construction. There is no cheap local
+substitute.
+
+Final position: **exp022, five members, equal weights, LB 18.54180.**
